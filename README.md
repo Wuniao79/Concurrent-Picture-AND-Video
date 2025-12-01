@@ -1,17 +1,16 @@
-# Concurrent-Picture-AND-Video
-Concurrent-Picture-AND-Video 一个在线并发创作工作站
+
 # Concurrent-Picture-AND-Video 在线并发创作工作站
 
 
 
 **Concurrent-Picture-AND-Video 在线并发创作工作站** 是一个基于 Web 的轻量级、高性能 AI 绘图客户端。  
 
-它专门面向如Sora2、banana pro 等需要大量并发的视频图文模型：
+此网站专门面向如Sora2、banana pro 等需要大量并发的视频图文模型：
 
 - ✅ 支持所有中转站（即Openai兼容接口）的视频、图片和文字模型  
 - ✅ 可自定义模型名称，无任何限制
 - ✅ 最高可同时并发20条模型
-- ✅ 新增 **全局提示 / 加载 / 进度条 / 错误处理**，整体体验更顺滑
+- ✅ **全局提示 / 加载 / 进度条 / 错误处理**，整体体验更顺滑
 
 整个应用 **纯前端运行**，所有配置和历史记录都保存在本地浏览器中，无需后端服务。
 > 🚀 你可以将本仓库部署到 GitHub Pages 或任意静态网页托管平台，即可在线使用。
@@ -94,28 +93,31 @@ Concurrent-Picture-AND-Video 一个在线并发创作工作站
 ```bash
 # 克隆项目
 git clone https://github.com/Wuniao79/Concurrent-Picture-AND-Video.git
+
+cd Concurrent-Picture-AND-Video
 # 安装依赖
 npm install
 
 # 构建生产环境
 npm run build
 
-# 将 dist文件夹调整为网站根目录
-cp -r dist/* /www/wwwroot/aa.wuniao.xyz/
 ```
+# 搭建完毕后，将 dist文件夹调整为网站根目录
 示例图
-<img width="2169" height="67" alt="image" src="https://github.com/user-attachments/assets/01d0f509-0c5d-4197-8be6-434f058ace0c" />
+<img width="2266" height="90" alt="image" src="https://github.com/user-attachments/assets/6b018f4d-5d80-41c7-8d5c-7236b27e50cc" />
+
 
 > 部署完成后，直接访问你的域名即可使用 
 
 ---
 
-### 方式二：本地部署（用于开发调试）
+### 方式二：本地部署
 
 ```bash
 # 克隆项目
 git clone https://github.com/Wuniao79/Concurrent-Picture-AND-Video.git
 
+cd Concurrent-Picture-AND-Video
 # 安装依赖
 npm install
 
@@ -133,7 +135,7 @@ http://localhost:3000/
 
 
 
-## 🛣️ Roadmap（未来版本计划）
+## 🛣️ Roadmap（2.0的未来版本计划）
 - [ ] 增加历史记录功能
 - [ ] 支持Gemini官方API （目前无法使用）
 - [ ] 多人在线聊天室？
@@ -161,7 +163,7 @@ http://localhost:3000/
 
 ---
 
-## 🤝 与原项目的关系 & 贡献
+## 🙏 致谢
 
 首先必须感谢 **TheSmallHanCat** 佬的这个项目https://github.com/TheSmallHanCat/sora2api
 
@@ -169,15 +171,16 @@ http://localhost:3000/
 
 因为 Sora2 视频需要大量摸奖才能得到能用的视频，所以就试着做了个网站。
 
-原本是打算凑合能用的状态并写死模型就分享出来,正准备发的时候 banana pro 出来了
+原本是打算凑合能用的状态并写死模型就分享出来,正准备发的时候 banana pro 发布了
 
-然后我就发现不仅仅是视频需要摸奖，图片也是有并发的需求的！
+随后我发现不仅仅是视频需要摸奖，图片也是有并发的需求的！
 
-所以重构了整个网站。
+所以我重构了整个网站
+
+网站UI借鉴：https://github.com/yeahhe365/All-Model-Chat
 
 
-
-我们欢迎：
+# 我们欢迎：
 
 1. 提交 Issue 反馈 Bug 或功能建议  
 2. 提交 PR 增加新功能 / 修复问题  
@@ -192,8 +195,10 @@ http://localhost:3000/
 - 本项目本质上只是一个 **API 调用客户端**，不提供任何 AI 模型本身。  
 - 请确保你的使用符合各个模型提供方（如 Google、OpenAI 等）的服务条款。  
 - 请勿使用本项目生成、传播违反法律法规或平台规范的内容。
+- 如因过量并发而导致被其他中转站拉黑后果自负！
+- 本项目仅用作个人AI创作，禁止商用！
 ---
 
 
-*   请确保您使用的 API Key 符合 Google Generative AI 的使用条款。
+*   请确保您使用的 API Key 符合Open Ai 的使用条款。
 *   请勿利用本项目生成违反法律法规的内容。
