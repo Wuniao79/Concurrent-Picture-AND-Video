@@ -163,7 +163,7 @@ http://localhost:5173
 
 首先必须感谢 **TheSmallHanCat** 佬的这个项目https://github.com/TheSmallHanCat/sora2api
 
-此项目建立初衷完全是基于使用 **Sor2** 视频创作而建造。
+此项目建立初衷完全是基于使用 **Sora2** 视频创作而建造。
 
 因为 Sora2 视频需要大量摸奖才能得到能用的视频，所以就试着做了个网站。
 
