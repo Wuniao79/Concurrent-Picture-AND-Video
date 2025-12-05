@@ -227,6 +227,20 @@ const handleCopyAll = async () => {
       );
     }
     // —— 普通模型文本消息 ——
+    const shouldCollapseReasoning = (text: string) => {
+      const prefixPatterns = [
+        /^\s*\*{1,3}\s*Decoding\b/i,
+        /^\s*\*{1,3}\s*Decoding the Greeting\b/i,
+        /^\s*\*{1,3}\s*Decoding "Hello"/i,
+        /^\s*\*{1,3}\s*Considering\b/i,
+        /^\s*\*{1,3}\s*Generating\b/i,
+        /^\s*\*{1,3}\s*Expanding\b/i,
+        /^\s*\*{1,3}\s*Examining the Core Query\b/i,
+        /^\s*\*{1,3}\s*Initiating Analysis Process\b/i,
+      ];
+      return prefixPatterns.some((p) => p.test(text));
+    };
+
     const isLongThinkingLike = () => {
       const text = message.text || '';
       if (text.length < 400) return false;
@@ -244,8 +258,26 @@ const handleCopyAll = async () => {
       return patterns.some((p) => lowered.includes(p));
     };
 
+    const fullText = message.text || '';
+
+    if (shouldCollapseReasoning(fullText)) {
+      return (
+        <details className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/40 px-3 py-2 text-xs leading-relaxed text-gray-700 dark:text-gray-200">
+          <summary className="flex items-center gap-1 cursor-pointer select-none text-gray-600 dark:text-gray-300">
+            <ChevronRight className="w-3 h-3 inline-block" />
+            <span>{durationSeconds ? `思考过程（用时 ${durationSeconds} 秒）` : '已折叠思考过程'}</span>
+          </summary>
+          <div
+            className="mt-2 whitespace-pre-wrap break-words"
+            style={{ fontSize: `${fontSize}px` }}
+          >
+            {fullText}
+          </div>
+        </details>
+      );
+    }
+
     if (isLongThinkingLike()) {
-      const fullText = message.text || '';
       const parts = fullText.split(/\n{2,}/);
       if (parts.length > 1) {
         const answer = parts[parts.length - 1].trim();
@@ -284,7 +316,6 @@ const handleCopyAll = async () => {
       // 如果无法可靠拆分出推理和答案，就直接正常展示，避免把最终回答也收进去
     }
 
-        const fullText = message.text || '';
     const imageMarkdownRegex = /!\[[^\]]*]\((data:image\/[a-zA-Z0-9+]+;base64,[^)]+)\)/g;
     const imageMatches = Array.from(fullText.matchAll(imageMarkdownRegex));
     const hasImages = imageMatches.length > 0;

@@ -1,9 +1,11 @@
-export enum Role {
+﻿export enum Role {
   USER = 'user',
   MODEL = 'model'
 }
 
 export type ApiMode = 'openai' | 'gemini';
+export type ThemeMode = 'system' | 'light' | 'dark';
+export type Language = 'system' | 'en' | 'zh';
 
 export interface Message {
   id: string;
@@ -11,7 +13,7 @@ export interface Message {
   text: string;
   timestamp: number;
   image?: string; // Base64 data URL
-  /** 单次生成耗时，毫秒；仅模型回复会有 */
+  /** Single generation latency in milliseconds; set on model replies. */
   generationDurationMs?: number;
 }
 
@@ -35,14 +37,15 @@ export interface LaneConfig {
 export interface LaneState extends LaneConfig {
   messages: Message[];
   isThinking: boolean;
-  /** 当前视频生成进度，0-100；undefined 表示未知 */
+  /** Current video generation progress 0-100; undefined means unknown. */
   progress?: number;
   error?: string;
 }
 
 export const AVAILABLE_MODELS: Model[] = [
-  { id: 'sora-video-10s', name: 'sora-video-10s', description: '横版 · 10 秒', vision: true },
-  { id: 'sora-video-15s', name: 'sora-video-15s', description: '横版 · 15 秒', vision: true },
-  { id: 'sora-video-portrait-10s', name: 'sora-video-portrait-10s', description: '竖版 · 10 秒', vision: true },
-  { id: 'sora-video-portrait-15s', name: 'sora-video-portrait-15s', description: '竖版 · 15 秒', vision: true },
+  { id: 'sora-video-10s', name: 'sora-video-10s', description: 'Landscape - 10s', vision: true, provider: 'openai' },
+  { id: 'sora-video-15s', name: 'sora-video-15s', description: 'Landscape - 15s', vision: true, provider: 'openai' },
+  { id: 'sora-video-portrait-10s', name: 'sora-video-portrait-10s', description: 'Portrait - 10s', vision: true, provider: 'openai' },
+  { id: 'sora-video-portrait-15s', name: 'sora-video-portrait-15s', description: 'Portrait - 15s', vision: true, provider: 'openai' },
+  { id: 'gemini-3-pro-preview', name: 'gemini-3-pro-preview', description: 'Gemini 3 Pro Preview', vision: true, provider: 'gemini' },
 ];

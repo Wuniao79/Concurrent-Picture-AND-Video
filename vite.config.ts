@@ -13,6 +13,10 @@ export default defineConfig(({ mode }) => {
       port: 3000,
       host: '0.0.0.0',
     },
+    preview: {
+      port: 4173,
+      host: '0.0.0.0',
+    },
     plugins: [react()],
     define: {
       // 兼容旧字段，同时支持新的 VITE_API_KEY / VITE_API_BASE_URL

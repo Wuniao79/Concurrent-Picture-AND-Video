@@ -1,7 +1,7 @@
-import React, { useRef, useEffect } from 'react';
+﻿import React, { useRef, useEffect } from 'react';
 import { LaneState, Model } from '../types';
 import { MessageBubble } from './MessageBubble';
-import { Loader2, X, Sparkles, MoreHorizontal, MessageSquarePlus, EyeOff } from 'lucide-react';
+import { Loader2, X, Sparkles, MessageSquarePlus, EyeOff } from 'lucide-react';
 
 interface ChatColumnProps {
   lane: LaneState;
@@ -14,7 +14,13 @@ interface ChatColumnProps {
 
 export const ChatColumn: React.FC<ChatColumnProps> = ({ lane, onRemove, onModelChange, isMultiLane, fontSize, availableModels }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const currentModel = availableModels.find(m => m.id === lane.model);
+  const filteredModels = lane
+    ? availableModels.filter(m => {
+        if (m.provider === 'gemini') return lane.model.includes('gemini') || m.id === lane.model;
+        return m.provider !== 'gemini';
+      })
+    : availableModels;
+  const currentModel = filteredModels.find(m => m.id === lane.model) || filteredModels[0];
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -37,17 +43,9 @@ export const ChatColumn: React.FC<ChatColumnProps> = ({ lane, onRemove, onModelC
           </div>
           <div className="flex flex-col">
             <div className="flex items-center gap-1">
-                <select 
-                value={lane.model}
-                onChange={(e) => onModelChange(lane.id, e.target.value)}
-                className="bg-transparent text-sm font-semibold text-gray-700 dark:text-gray-200 focus:outline-none cursor-pointer hover:text-gray-900 dark:hover:text-white transition-colors max-w-[180px] truncate"
-                >
-                {availableModels.map(m => (
-                    <option key={m.id} value={m.id} className="bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200">
-                    {m.name}
-                    </option>
-                ))}
-                </select>
+                <span className="text-sm font-semibold text-gray-700 dark:text-gray-200 truncate max-w-[200px]">
+                  {currentModel?.name || lane.model}
+                </span>
                 {currentModel && !currentModel.vision && (
                      <span className="text-gray-400 dark:text-gray-500" title="No Vision Support">
                         <EyeOff size={12} />
@@ -58,11 +56,8 @@ export const ChatColumn: React.FC<ChatColumnProps> = ({ lane, onRemove, onModelC
           </div>
         </div>
 
-        <div className="flex items-center gap-1">
-          <button className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-            <MoreHorizontal size={16} />
-          </button>
-          {isMultiLane && (
+        {isMultiLane && (
+          <div className="flex items-center gap-1">
             <button 
               onClick={() => onRemove(lane.id)}
               className="text-gray-400 hover:text-red-500 p-1.5 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
@@ -70,8 +65,8 @@ export const ChatColumn: React.FC<ChatColumnProps> = ({ lane, onRemove, onModelC
             >
               <X size={16} />
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Messages Area */}
@@ -103,7 +98,7 @@ export const ChatColumn: React.FC<ChatColumnProps> = ({ lane, onRemove, onModelC
                 <div className="w-6 h-6 flex items-center justify-center bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full shadow-sm">
                    <Loader2 size={14} className="animate-spin text-brand-600" />
                 </div>
-                <span className="text-sm text-gray-400 animate-pulse">生成中...</span>
+                <span className="text-sm text-gray-400 animate-pulse">Generating...</span>
              </div>
           </div>
         )}

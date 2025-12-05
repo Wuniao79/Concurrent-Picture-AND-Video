@@ -5,12 +5,14 @@ interface ChatGridItemProps {
   lane: LaneState;
   isActive: boolean;
   onClick: () => void;
+  onDoubleClick?: () => void;
 }
 
-export const ChatGridItem: React.FC<ChatGridItemProps> = ({ lane, isActive, onClick }) => {
+export const ChatGridItem: React.FC<ChatGridItemProps> = ({ lane, isActive, onClick, onDoubleClick }) => {
   return (
     <div 
       onClick={onClick}
+      onDoubleClick={onDoubleClick}
       className={`
         cursor-pointer
         bg-white dark:bg-gray-800 
