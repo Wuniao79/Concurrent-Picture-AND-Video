@@ -1,22 +1,19 @@
+<div align="center">
+
 # Concurrent-Picture-AND-Video
-Concurrent-Picture-AND-Video 一个在线并发创作工作站
-# Concurrent-Picture-AND-Video 在线并发创作工作站
+ **一个基于 Web 的轻量级、高性能 AI 绘图的在线并发创作工作站**
+
+</div>
+
+# 🎨核心功能
+
+- ### ⚙️ 支持所有中转站（即Openai兼容接口）的视频、图片和文字模型  
+- ### 🔓 可自定义模型名称，无任何限制
+- ### 🔗 最高可同时并发20条模型
+- ### 🛡️ **全局提示 / 加载 / 进度条 / 错误处理**，整体体验更顺滑
 
 
-
-**Concurrent-Picture-AND-Video 在线并发创作工作站** 是一个基于 Web 的轻量级、高性能 AI 绘图客户端。  
-
-它专门面向如Sora2、banana pro 等需要大量并发的视频图文模型：
-
-- ✅ 支持所有中转站（即Openai兼容接口）的视频、图片和文字模型  
-- ✅ 可自定义模型名称，无任何限制
-- ✅ 最高可同时并发20条模型
-- ✅ 新增 **全局提示 / 加载 / 进度条 / 错误处理**，整体体验更顺滑
-
-整个应用 **纯前端运行**，所有配置和历史记录都保存在本地浏览器中，无需后端服务。
-> 🚀 你可以将本仓库部署到 GitHub Pages 或任意静态网页托管平台，即可在线使用。
-
-<img width="2559" height="1342" alt="image" src="https://github.com/user-attachments/assets/f7611318-0efb-47f7-8da2-d798c94708c5" />
+<img width="2558" height="1322" alt="image" src="https://github.com/user-attachments/assets/701dac3e-c2b6-4ef0-9558-8991ca6e4ab7" />
 
 ---
 
@@ -41,6 +38,10 @@ Concurrent-Picture-AND-Video 一个在线并发创作工作站
 - **可自定义并发模型**
   - 可自定义输入需要并发的模型
   - 经过测试，使用中转站的任何模型都可以并发。
+  -
+- **支持多站点|密钥轮询**
+  - 支持多家站点地址和密钥，并且可以自主选择。
+  - 支持官方Gemini的多个官方密钥轮询。
 
 - **自带图片、视频下载功能**
   - 在识别到可下载的视频或图片后会自动提供下载按钮，无需复杂的提取
@@ -100,9 +101,9 @@ npm install
 # 构建生产环境
 npm run build
 
-# 将 dist文件夹调整为网站根目录
-cp -r dist/* /www/wwwroot/aa.wuniao.xyz/
+
 ```
+## 将 dist文件夹调整为网站根目录
 示例图
 <img width="2169" height="67" alt="image" src="https://github.com/user-attachments/assets/01d0f509-0c5d-4197-8be6-434f058ace0c" />
 
@@ -116,46 +117,61 @@ cp -r dist/* /www/wwwroot/aa.wuniao.xyz/
 # 克隆项目
 git clone https://github.com/Wuniao79/Concurrent-Picture-AND-Video.git
 
-# 安装依赖
+#安装依赖
 npm install
 
-# 启动开发环境
-npm run dev
+#构建生产环境代码
+npm run build
+
+#在本地预览生产环境效果
+npm run preview
+
 ```
 
 访问地址：
 
 ```
-http://localhost:3000/
+http://localhost:5015
 ```
 
 ---
+# ✍️更新日志
 
+##### 2025年12月5日: 第二次重构整个项目，彻底解决了前端臃肿的代码块！  更新了可自主选择中转站以及Gemini密钥、半成品历史记录以及小细节优化。
 
-
-## 🛣️ Roadmap（未来版本计划）
-- [ ] 增加历史记录功能
-- [ ] 支持Gemini官方API （目前无法使用）
-- [ ] 多人在线聊天室？
-- [ ] 多模式形态，如加入banana pro的4k 绘图设置选项等
-- [ ] 以及其他小细节优化  
+---
+## 🛣️ Roadmap（2.5及未来版本计划）
+-  增加历史记录功能（目前还不稳定）
+-  优化更多其他小细节优化
+-  多人在线聊天室？
+-  多模式形态，如加入banana pro的4k 绘图设置选项等
+-  Sora2故事版功能以及banana提示词小组件
+- ✅ ~~支持Gemini官方API~~
+- 更多...
 ---
 ## 📸 界面概览
 
 ### 🖥️ 网页UI
-<img width="2559" height="1351" alt="image" src="https://github.com/user-attachments/assets/780ceb21-50b3-4903-9c85-bcfdf80410e7" />
+<img width="2546" height="1341" alt="image" src="https://github.com/user-attachments/assets/e1dc681a-a5e9-4610-94b2-ff1b607b8d8a" />
 
-<img width="1379" height="1155" alt="image" src="https://github.com/user-attachments/assets/d1610a33-6b22-4c9b-82e5-ab7af6f7e070" />
+<img width="1423" height="1182" alt="image" src="https://github.com/user-attachments/assets/910a1b3e-0d25-4b31-9d4f-85bf06904772" />
 
-<img width="1368" height="1144" alt="image" src="https://github.com/user-attachments/assets/942df47b-03bf-43c9-ad99-baaeecc8d774" />
+
+<img width="1392" height="1182" alt="image" src="https://github.com/user-attachments/assets/a262fe9f-dbbc-4e23-a206-9eede0d268cb" />
 
 
 ### ⏰并发场景
+#### Sora2视频并发
 <img width="2559" height="1336" alt="image" src="https://github.com/user-attachments/assets/3960e1d9-9eef-4297-8937-29d81d801ada" />
 
-<img width="2558" height="1350" alt="image" src="https://github.com/user-attachments/assets/9df2b3ac-2b4f-49ee-a18e-54118dbd0110" />
+<img width="2555" height="1346" alt="image" src="https://github.com/user-attachments/assets/557d812c-e60a-486d-98dc-298c5431b8d2" />
 
+#### 图片并发
 <img width="2555" height="1347" alt="image" src="https://github.com/user-attachments/assets/6c376b80-41b2-4c74-9612-f6bcb81f6a33" />
+
+#### 文字并发
+<img width="2559" height="1341" alt="image" src="https://github.com/user-attachments/assets/a82ae624-d9c5-4599-88a8-b13214e67e99" />
+
 
 
 
