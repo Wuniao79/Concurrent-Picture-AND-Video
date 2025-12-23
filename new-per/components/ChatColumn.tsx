@@ -1,7 +1,7 @@
-import React, { useEffect, useRef } from 'react';
+﻿import React, { useRef, useEffect } from 'react';
 import { LaneState, Model, Role } from '../types';
 import { MessageBubble } from './MessageBubble';
-import { Loader2, X, Sparkles, MessageSquarePlus, EyeOff, Maximize2, Minimize2 } from 'lucide-react';
+import { Loader2, X, Sparkles, MessageSquarePlus, EyeOff } from 'lucide-react';
 
 interface ChatColumnProps {
   lane: LaneState;
@@ -10,12 +10,6 @@ interface ChatColumnProps {
   isMultiLane: boolean;
   fullWidth?: boolean;
   isFullView?: boolean;
-  showPreviewToggle?: boolean;
-  isPreviewActive?: boolean;
-  onTogglePreview?: () => void;
-  downloadProxyUrl?: string;
-  cacheHistoryId?: string | null;
-  cacheLaneId?: string | null;
   fontSize: number;
   availableModels: Model[];
 }
@@ -27,19 +21,18 @@ export const ChatColumn: React.FC<ChatColumnProps> = ({
   isMultiLane,
   fullWidth,
   isFullView,
-  showPreviewToggle,
-  isPreviewActive,
-  onTogglePreview,
-  downloadProxyUrl,
-  cacheHistoryId,
-  cacheLaneId,
   fontSize,
   availableModels,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fullViewMode = Boolean(isFullView);
-  const showHeader = !fullViewMode || showPreviewToggle;
-  const currentModel = availableModels.find((m) => m.id === lane.model) || availableModels[0];
+  const filteredModels = lane
+    ? availableModels.filter(m => {
+        if (m.provider === 'gemini') return lane.model.includes('gemini') || m.id === lane.model;
+        return m.provider !== 'gemini';
+      })
+    : availableModels;
+  const currentModel = filteredModels.find(m => m.id === lane.model) || filteredModels[0];
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -60,9 +53,9 @@ export const ChatColumn: React.FC<ChatColumnProps> = ({
 
   return (
     <div
-      className={`app-panel flex flex-col h-full bg-white dark:bg-gray-900 ${
+      className={`flex flex-col h-full bg-white dark:bg-gray-900 ${
         isMultiLane
-          ? 'border-r border-gray-200 dark:border-gray-800 min-w-0 w-full'
+          ? 'border-r border-gray-200 dark:border-gray-800 min-w-[420px] w-full md:w-[520px]'
           : fullWidth
           ? 'w-full'
           : 'w-full max-w-4xl mx-auto'
@@ -70,8 +63,8 @@ export const ChatColumn: React.FC<ChatColumnProps> = ({
     >
       
       {/* Column Header */}
-      {showHeader && (
-        <div className="app-panel h-14 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between px-4 bg-white dark:bg-gray-900 sticky top-0 z-10">
+      {!fullViewMode && (
+        <div className="h-14 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between px-4 bg-white dark:bg-gray-900 sticky top-0 z-10">
           <div className="flex items-center gap-2">
             <div
               className={`p-1.5 rounded-md ${
@@ -97,31 +90,15 @@ export const ChatColumn: React.FC<ChatColumnProps> = ({
             </div>
           </div>
 
-          {(isMultiLane || showPreviewToggle) && (
+          {isMultiLane && (
             <div className="flex items-center gap-1">
-              {showPreviewToggle && onTogglePreview && (
-                <button
-                  onClick={onTogglePreview}
-                  className={`p-1.5 rounded-md transition-colors ${
-                    isPreviewActive
-                      ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20'
-                      : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
-                  }`}
-                  title={isPreviewActive ? 'Exit preview' : 'Full preview'}
-                  aria-label={isPreviewActive ? 'Exit preview' : 'Full preview'}
-                >
-                  {isPreviewActive ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-                </button>
-              )}
-              {isMultiLane && (
-                <button
-                  onClick={() => onRemove(lane.id)}
-                  className="text-gray-400 hover:text-red-500 p-1.5 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                  title="Close Panel"
-                >
-                  <X size={16} />
-                </button>
-              )}
+              <button
+                onClick={() => onRemove(lane.id)}
+                className="text-gray-400 hover:text-red-500 p-1.5 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                title="Close Panel"
+              >
+                <X size={16} />
+              </button>
             </div>
           )}
         </div>
@@ -145,9 +122,6 @@ export const ChatColumn: React.FC<ChatColumnProps> = ({
             fontSize={fullViewMode && msg.role === Role.MODEL ? Math.max(12, fontSize - 2) : fontSize}
             assistantLabel={assistantLabel}
             showAssistantLabel={fullViewMode && msg.role === Role.MODEL}
-            downloadProxyUrl={downloadProxyUrl}
-            cacheHistoryId={cacheHistoryId}
-            cacheLaneId={cacheLaneId}
           />
         ))}
 
@@ -172,14 +146,9 @@ export const ChatColumn: React.FC<ChatColumnProps> = ({
 
         {/* Error Display */}
         {lane.error && (
-          <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/50 rounded-lg text-red-600 dark:text-red-400 text-sm mt-2 flex items-start gap-2">
-             <div className="w-2 h-2 rounded-full bg-red-500 mt-2" />
-             <div className="flex-1 min-w-0 break-words">{lane.error}</div>
-             {typeof lane.errorCode === 'number' && lane.errorCode >= 400 && (
-               <div className="text-xs font-semibold text-red-500 dark:text-red-400 whitespace-nowrap">
-                 [{lane.errorCode}]
-               </div>
-             )}
+          <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/50 rounded-lg text-red-600 dark:text-red-400 text-sm mt-2 flex items-center gap-2">
+             <div className="w-2 h-2 rounded-full bg-red-500" />
+             {lane.error}
           </div>
         )}
       </div>

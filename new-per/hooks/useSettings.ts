@@ -1,14 +1,5 @@
 import { useEffect, useState } from 'react';
-import {
-  ApiMode,
-  Language,
-  Model,
-  ThemeMode,
-  AVAILABLE_MODELS,
-  GeminiAspectRatio,
-  GeminiImageSettings,
-  GeminiResolution,
-} from '../types';
+import { ApiMode, Language, Model, ThemeMode, AVAILABLE_MODELS } from '../types';
 import { safeStorageGet, safeStorageSet } from '../utils/storage';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -53,17 +44,6 @@ export const useSettings = (options: UseSettingsOptions = {}) => {
     return !isNaN(n) && n >= 10 && n <= 24 ? n : 15;
   });
 
-  const [downloadProxyUrl, setDownloadProxyUrl] = useState<string>(() => {
-    return safeStorageGet('sora_download_proxy_url') ?? '';
-  });
-
-  const [concurrencyIntervalSec, setConcurrencyIntervalSec] = useState(() => {
-    const stored = safeStorageGet('sora_concurrency_interval_sec');
-    const n = stored ? parseFloat(stored) : NaN;
-    if (!isNaN(n)) return Math.max(0.1, Math.min(60, n));
-    return 0.5;
-  });
-
   const [isStreamEnabled, setIsStreamEnabled] = useState(() => {
     const stored = safeStorageGet('sora_stream');
     if (stored === '0') return false;
@@ -94,6 +74,7 @@ export const useSettings = (options: UseSettingsOptions = {}) => {
   const [geminiApiUrl, setGeminiApiUrl] = useState(() => {
     const stored = safeStorageGet('sora_gemini_apiUrl');
     if (stored && stored.trim()) return stored;
+    if (defaultApiUrl && defaultApiUrl.trim()) return defaultApiUrl.trim();
     return '';
   });
 
@@ -101,7 +82,8 @@ export const useSettings = (options: UseSettingsOptions = {}) => {
     const stored = safeStorageGet('sora_gemini_custom_base_enabled');
     if (stored === '1') return true;
     if (stored === '0') return false;
-    return false;
+    const existingUrl = safeStorageGet('sora_gemini_apiUrl');
+    return Boolean(existingUrl && existingUrl.trim());
   });
 
   const [geminiEnterpriseEnabled, setGeminiEnterpriseEnabled] = useState<boolean>(() => {
@@ -119,34 +101,6 @@ export const useSettings = (options: UseSettingsOptions = {}) => {
 
   const [geminiEnterpriseToken, setGeminiEnterpriseToken] = useState<string>(() => {
     return safeStorageGet('sora_gemini_enterprise_token') ?? '';
-  });
-
-  const [geminiImageSettings, setGeminiImageSettings] = useState<GeminiImageSettings>(() => {
-    const enabled = safeStorageGet('sora_gemini_image_enabled') === '1';
-    const storedResolution = safeStorageGet('sora_gemini_image_resolution') as GeminiResolution | null;
-    const storedAspect = safeStorageGet('sora_gemini_image_ratio') as GeminiAspectRatio | null;
-    const resolution: GeminiResolution = storedResolution === '1K' || storedResolution === '2K' || storedResolution === '4K'
-      ? storedResolution
-      : '4K';
-    const validAspect: GeminiAspectRatio[] = [
-      'auto',
-      '21:9',
-      '16:9',
-      '3:2',
-      '4:3',
-      '5:4',
-      '1:1',
-      '4:5',
-      '3:4',
-      '2:3',
-      '9:16',
-    ];
-    const aspectRatio: GeminiAspectRatio = storedAspect && validAspect.includes(storedAspect) ? storedAspect : 'auto';
-    return {
-      enabled,
-      resolution,
-      aspectRatio,
-    };
   });
 
   const [availableModels, setAvailableModels] = useState<Model[]>(() => {
@@ -184,36 +138,9 @@ export const useSettings = (options: UseSettingsOptions = {}) => {
     return stored === '1';
   });
 
-  const [devFuture1Enabled, setDevFuture1Enabled] = useState<boolean>(() => {
-    const stored = safeStorageGet('sora_dev_future_1');
-    return stored === '1';
-  });
-
-  const [devFuture2Enabled, setDevFuture2Enabled] = useState<boolean>(() => {
-    const stored = safeStorageGet('sora_dev_future_2');
-    return stored === '1';
-  });
-
-  const [devFuture3Enabled, setDevFuture3Enabled] = useState<boolean>(() => {
-    const stored = safeStorageGet('sora_dev_future_3');
-    return stored === '1';
-  });
-
-  // Danger gate: unlock high concurrency lane limit UI (one-way; only cleared by clearing localStorage).
-  const [laneLimitUnlocked, setLaneLimitUnlocked] = useState<boolean>(() => {
-    const stored = safeStorageGet('sora_dev_lane_limit_unlocked');
-    return stored === '1';
-  });
-
-  const [laneCountLimit, setLaneCountLimit] = useState<number>(() => {
-    const stored = safeStorageGet('sora_dev_lane_limit');
-    const n = stored ? parseInt(stored, 10) : NaN;
-    return !isNaN(n) && n >= 1 && n <= 999 ? n : 20;
-  });
-
   const [historyButtonEnabled, setHistoryButtonEnabled] = useState<boolean>(() => {
     const stored = safeStorageGet('sora_history_button');
-    return stored === '1' || stored === 'true';
+    return stored === '1';
   });
 
   const [moreImagesEnabled, setMoreImagesEnabled] = useState<boolean>(() => {
@@ -257,22 +184,14 @@ export const useSettings = (options: UseSettingsOptions = {}) => {
     return [{ id: uuidv4(), name: '密钥1', apiKey: '', enabled: false }];
   });
 
-  // Gate for showing "more keys" UI and the home key-rotation button.
-  const [geminiKeyPoolEnabled, setGeminiKeyPoolEnabled] = useState<boolean>(() => {
-    const stored = safeStorageGet('sora_gemini_keys_enabled');
-    if (stored === '1') return true;
-    if (stored === '0') return false;
-
-    // Backward compatibility: if rotation was enabled before, keep the pool enabled.
-    const rotation = safeStorageGet('sora_gemini_key_rotation');
-    return rotation === '1';
+  const [activeGeminiKeyId, setActiveGeminiKeyId] = useState<string>(() => {
+    const stored = safeStorageGet('sora_gemini_active_key');
+    return stored || '';
   });
 
-  const [geminiKeyRotationEnabled, setGeminiKeyRotationEnabled] = useState<boolean>(() => {
-    const stored = safeStorageGet('sora_gemini_key_rotation');
-    if (stored === '1') return true;
-    if (stored === '0') return false;
-    return false;
+  const [geminiKeysEnabled, setGeminiKeysEnabled] = useState<boolean>(() => {
+    const stored = safeStorageGet('sora_gemini_keys_enabled');
+    return stored === '1';
   });
 
   // Persist settings to localStorage
@@ -302,14 +221,6 @@ export const useSettings = (options: UseSettingsOptions = {}) => {
   useEffect(() => {
     safeStorageSet('sora_fontSize', String(fontSize));
   }, [fontSize]);
-
-  useEffect(() => {
-    safeStorageSet('sora_download_proxy_url', downloadProxyUrl ?? '');
-  }, [downloadProxyUrl]);
-
-  useEffect(() => {
-    safeStorageSet('sora_concurrency_interval_sec', String(concurrencyIntervalSec));
-  }, [concurrencyIntervalSec]);
 
   useEffect(() => {
     safeStorageSet('sora_stream', isStreamEnabled ? '1' : '0');
@@ -356,12 +267,6 @@ export const useSettings = (options: UseSettingsOptions = {}) => {
   }, [geminiEnterpriseToken]);
 
   useEffect(() => {
-    safeStorageSet('sora_gemini_image_enabled', geminiImageSettings.enabled ? '1' : '0');
-    safeStorageSet('sora_gemini_image_resolution', geminiImageSettings.resolution);
-    safeStorageSet('sora_gemini_image_ratio', geminiImageSettings.aspectRatio);
-  }, [geminiImageSettings]);
-
-  useEffect(() => {
     if (selectedModelId) {
       safeStorageSet('sora_selectedModelId', selectedModelId);
     }
@@ -378,28 +283,6 @@ export const useSettings = (options: UseSettingsOptions = {}) => {
   useEffect(() => {
     safeStorageSet('sora_dev_tbd_2', devTbd2Enabled ? '1' : '0');
   }, [devTbd2Enabled]);
-
-  useEffect(() => {
-    safeStorageSet('sora_dev_future_1', devFuture1Enabled ? '1' : '0');
-  }, [devFuture1Enabled]);
-
-  useEffect(() => {
-    safeStorageSet('sora_dev_future_2', devFuture2Enabled ? '1' : '0');
-  }, [devFuture2Enabled]);
-
-  useEffect(() => {
-    safeStorageSet('sora_dev_future_3', devFuture3Enabled ? '1' : '0');
-  }, [devFuture3Enabled]);
-
-  useEffect(() => {
-    if (!laneLimitUnlocked) return;
-    safeStorageSet('sora_dev_lane_limit', String(laneCountLimit));
-  }, [laneCountLimit, laneLimitUnlocked]);
-
-  useEffect(() => {
-    if (!laneLimitUnlocked) return;
-    safeStorageSet('sora_dev_lane_limit_unlocked', '1');
-  }, [laneLimitUnlocked]);
 
   useEffect(() => {
     safeStorageSet('sora_history_button', historyButtonEnabled ? '1' : '0');
@@ -442,18 +325,12 @@ export const useSettings = (options: UseSettingsOptions = {}) => {
   }, [geminiKeys]);
 
   useEffect(() => {
-    safeStorageSet('sora_gemini_key_rotation', geminiKeyRotationEnabled ? '1' : '0');
-  }, [geminiKeyRotationEnabled]);
+    safeStorageSet('sora_gemini_active_key', activeGeminiKeyId ?? '');
+  }, [activeGeminiKeyId]);
 
   useEffect(() => {
-    safeStorageSet('sora_gemini_keys_enabled', geminiKeyPoolEnabled ? '1' : '0');
-  }, [geminiKeyPoolEnabled]);
-
-  useEffect(() => {
-    if (!geminiKeyPoolEnabled && geminiKeyRotationEnabled) {
-      setGeminiKeyRotationEnabled(false);
-    }
-  }, [geminiKeyPoolEnabled, geminiKeyRotationEnabled]);
+    safeStorageSet('sora_gemini_keys_enabled', geminiKeysEnabled ? '1' : '0');
+  }, [geminiKeysEnabled]);
 
   return {
     theme,
@@ -462,10 +339,6 @@ export const useSettings = (options: UseSettingsOptions = {}) => {
     setLanguage,
     fontSize,
     setFontSize,
-    downloadProxyUrl,
-    setDownloadProxyUrl,
-    concurrencyIntervalSec,
-    setConcurrencyIntervalSec,
     isStreamEnabled,
     setIsStreamEnabled,
     apiMode,
@@ -498,23 +371,6 @@ export const useSettings = (options: UseSettingsOptions = {}) => {
     setDevTbd1Enabled,
     devTbd2Enabled,
     setDevTbd2Enabled,
-    devFuture1Enabled,
-    setDevFuture1Enabled,
-    devFuture2Enabled,
-    setDevFuture2Enabled,
-    devFuture3Enabled,
-    setDevFuture3Enabled,
-    laneLimitUnlocked,
-    setLaneLimitUnlocked: (v: boolean) => {
-      // One-way toggle: can only be enabled; disabling requires clearing localStorage.
-      if (!v) return;
-      setLaneLimitUnlocked(true);
-    },
-    laneCountLimit: laneLimitUnlocked ? laneCountLimit : 20,
-    setLaneCountLimit: (v: number) => {
-      if (!laneLimitUnlocked) return;
-      setLaneCountLimit(v);
-    },
     historyButtonEnabled,
     setHistoryButtonEnabled,
     moreImagesEnabled,
@@ -527,11 +383,9 @@ export const useSettings = (options: UseSettingsOptions = {}) => {
     setRelayEnabled,
     geminiKeys,
     setGeminiKeys,
-    geminiKeyPoolEnabled,
-    setGeminiKeyPoolEnabled,
-    geminiKeyRotationEnabled,
-    setGeminiKeyRotationEnabled,
-    geminiImageSettings,
-    setGeminiImageSettings,
+    activeGeminiKeyId,
+    setActiveGeminiKeyId,
+    geminiKeysEnabled,
+    setGeminiKeysEnabled,
   };
 };

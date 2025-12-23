@@ -1,21 +1,16 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import { Message, Role } from "../types";
 import { Bot, User, ChevronRight } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
-import { fetchBlobWithProxy } from "../utils/download";
-import { buildImageCacheId, getImageCacheRecord, putImageCacheRecord } from "../utils/imageCache";
 
 interface MessageBubbleProps {
   message: Message;
   fontSize?: number;
   assistantLabel?: string;
   showAssistantLabel?: boolean;
-  downloadProxyUrl?: string;
-  cacheHistoryId?: string | null;
-  cacheLaneId?: string | null;
 }
 
 /**
@@ -55,22 +50,9 @@ function parseSoraPayload(text: string) {
     }
   }
 
-  const remixPatterns: RegExp[] = [
-    /Post ID\s*[:：]\s*([^\s<]+)/i,
-    /PostId\s*[:：]\s*([^\s<]+)/i,
-    /Remix ID\s*[:：]\s*([^\s<]+)/i,
-    /Remix\s*[:：]\s*([^\s<]+)/i,
-    /post_id\s*[:=]\s*["']?([A-Za-z0-9_-]+)["']?/i,
-    /postId\s*[:=]\s*["']?([A-Za-z0-9_-]+)["']?/i,
-    /data-post-id=["']([^"']+)["']/i,
-    /data-postid=["']([^"']+)["']/i,
-  ];
-  for (const pattern of remixPatterns) {
-    const match = trimmed.match(pattern);
-    if (match && match[1]) {
-      result.remixId = match[1];
-      break;
-    }
+  const remixMatch = trimmed.match(/Post ID:\s*([^\s]+)/i);
+  if (remixMatch) {
+    result.remixId = remixMatch[1];
   }
 
   if (!result.videoSrc) {
@@ -95,122 +77,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   fontSize = 16,
   assistantLabel,
   showAssistantLabel = false,
-  downloadProxyUrl,
-  cacheHistoryId,
-  cacheLaneId,
 }) => {
   const isUser = message.role === Role.USER;
   const [copiedRemix, setCopiedRemix] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const shouldShowAssistantLabel = !isUser && showAssistantLabel && !!assistantLabel;
-
-  const extractMarkdownImages = (text: string) => {
-    if (!text) return [] as string[];
-    const results: string[] = [];
-    const regex = /!\[[^\]]*]\((\S+?)(?:\s+["'][^"']*["'])?\)/g;
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(text)) !== null) {
-      if (match[1]) results.push(match[1]);
-    }
-    return results;
-  };
-
-  const extractInlineImagesFromText = (text: string) => {
-    if (!text) return [] as string[];
-    const results: string[] = [];
-    const regex = /data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+/g;
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(text)) !== null) {
-      if (match[0]) results.push(match[0]);
-    }
-    return results;
-  };
-
-  const stripMarkdownImages = (text: string) => {
-    if (!text) return '';
-    return text.replace(/!\[[^\]]*]\((\S+?)(?:\s+["'][^"']*["'])?\)/g, '').trim();
-  };
-
-  const stripInlineImageData = (text: string) => {
-    if (!text) return '';
-    return text.replace(/data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+/g, '').trim();
-  };
-
-  const resolveImageExtension = (src: string, mimeType?: string) => {
-    if (mimeType) {
-      const cleaned = mimeType.toLowerCase().split(';')[0];
-      if (cleaned.startsWith('image/')) {
-        const ext = cleaned.replace('image/', '');
-        if (ext === 'jpeg') return 'jpg';
-        if (ext.includes('+xml')) return 'svg';
-        if (ext) return ext;
-      }
-    }
-    if (src.startsWith('data:image/')) {
-      const match = /^data:image\/([^;]+);/i.exec(src);
-      return match?.[1]?.toLowerCase() || 'png';
-    }
-    const cleaned = src.split('?')[0].split('#')[0];
-    const lastDot = cleaned.lastIndexOf('.');
-    if (lastDot !== -1) {
-      const ext = cleaned.slice(lastDot + 1).toLowerCase();
-      if (ext && ext.length <= 5) return ext;
-    }
-    return 'png';
-  };
-
-  const handleDownloadImage = async (src: string, nameBase: string, cacheId?: string) => {
-    let cachedBlob: Blob | null = null;
-    if (cacheId) {
-      const cached = await getImageCacheRecord(cacheId);
-      if (cached?.blob) {
-        cachedBlob = cached.blob;
-      }
-    }
-    const ext = resolveImageExtension(src, cachedBlob?.type);
-    const filename = `${nameBase}.${ext}`;
-    if (cachedBlob) {
-      const url = window.URL.createObjectURL(cachedBlob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      link.click();
-      window.URL.revokeObjectURL(url);
-      return;
-    }
-    if (src.startsWith('data:image/')) {
-      const link = document.createElement('a');
-      link.href = src;
-      link.download = filename;
-      link.click();
-      return;
-    }
-    try {
-      const blob = await fetchBlobWithProxy(src, downloadProxyUrl);
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      link.click();
-      window.URL.revokeObjectURL(url);
-      if (cacheId && cacheHistoryId && cacheLaneId) {
-        await putImageCacheRecord({
-          id: cacheId,
-          historyId: cacheHistoryId,
-          laneId: cacheLaneId,
-          messageId: message.id,
-          imageIndex: 0,
-          source: src,
-          createdAt: Date.now(),
-          mimeType: blob.type || '',
-          blob,
-        });
-      }
-    } catch (err) {
-      console.error('下载图片失败:', err);
-      window.open(src, '_blank', 'noopener,noreferrer');
-    }
-  };
 
   const normalizeMarkdown = (text: string) => {
     const lines = text.replace(/\r\n?/g, "\n").split("\n");
@@ -229,12 +100,13 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   };
 
   const renderMarkdownContent = (content: string) => (
-    <div className="markdown-body" style={{ fontSize: `${fontSize}px` }}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
-        components={{
-          code({ inline, className, children, ...props }: any) {
+    <ReactMarkdown
+      className="markdown-body"
+      remarkPlugins={[remarkGfm, remarkMath]}
+      rehypePlugins={[rehypeKatex]}
+      style={{ fontSize: `${fontSize}px` }}
+      components={{
+        code({ inline, className, children, ...props }) {
           if (inline) {
             return (
               <code className="markdown-inline-code" {...props}>
@@ -249,15 +121,15 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               </code>
             </pre>
           );
-          },
-          a({ children, ...props }: any) {
+        },
+        a({ children, ...props }) {
           return (
             <a {...props} target="_blank" rel="noreferrer">
               {children}
             </a>
           );
-          },
-          img({ src, alt, ...props }: any) {
+        },
+        img({ src, alt, ...props }) {
           return (
             <img
               {...props}
@@ -266,19 +138,18 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               className="max-w-full rounded-lg border border-gray-200 dark:border-gray-800"
             />
           );
-          },
-          table({ children }: any) {
+        },
+        table({ children }) {
           return (
             <div className="overflow-x-auto">
               <table>{children}</table>
             </div>
           );
-          },
-        }}
-      >
-        {normalizeMarkdown(content)}
-      </ReactMarkdown>
-    </div>
+        },
+      }}
+    >
+      {normalizeMarkdown(content)}
+    </ReactMarkdown>
   );
 
   const { logsText, videoSrc, fullHtml, remixId } = parseSoraPayload(
@@ -289,7 +160,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     typeof message.generationDurationMs === "number"
       ? (message.generationDurationMs / 1000).toFixed(1)
       : null;
-  const isVideoMessage = Boolean(videoSrc);
 
   const handleCopyRemix = async () => {
     if (!remixId) return;
@@ -301,58 +171,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       console.error("Copy remix failed", e);
     }
   };
-
-  const fullText = message.text || "";
-  const messageImages =
-    Array.isArray(message.images) && message.images.length > 0
-      ? message.images.filter(Boolean)
-      : message.image
-      ? [message.image]
-      : [];
-  const markdownImages = extractMarkdownImages(fullText);
-  const inlineImages = extractInlineImagesFromText(fullText);
-  const allImages = Array.from(new Set([...messageImages, ...markdownImages, ...inlineImages]));
-  const shouldStrip = markdownImages.length > 0 || inlineImages.length > 0;
-  const strippedText = shouldStrip ? stripInlineImageData(stripMarkdownImages(fullText)) : fullText;
-  const imageCacheReady = Boolean(cacheHistoryId && cacheLaneId && message.id);
-  const imageCacheKey = allImages.join('|');
-  const cachedIdsRef = useRef<Set<string>>(new Set());
-
-  useEffect(() => {
-    if (!imageCacheReady || allImages.length === 0 || isUser) return;
-    let cancelled = false;
-    const run = async () => {
-      for (let idx = 0; idx < allImages.length; idx += 1) {
-        if (cancelled) return;
-        const src = allImages[idx];
-        const cacheId = buildImageCacheId(cacheHistoryId as string, cacheLaneId as string, message.id, idx);
-        if (cachedIdsRef.current.has(cacheId)) continue;
-        cachedIdsRef.current.add(cacheId);
-        const existing = await getImageCacheRecord(cacheId);
-        if (existing?.blob) continue;
-        try {
-          const blob = await fetchBlobWithProxy(src, downloadProxyUrl);
-          await putImageCacheRecord({
-            id: cacheId,
-            historyId: cacheHistoryId as string,
-            laneId: cacheLaneId as string,
-            messageId: message.id,
-            imageIndex: idx,
-            source: src,
-            createdAt: Date.now(),
-            mimeType: blob.type || '',
-            blob,
-          });
-        } catch {
-          // ignore caching errors
-        }
-      }
-    };
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [imageCacheKey, imageCacheReady, cacheHistoryId, cacheLaneId, message.id, downloadProxyUrl, isUser, allImages]);
 
   const renderModelContent = () => {
     // 仅有 Sora 日志（生成中，视频未就绪）
@@ -395,7 +213,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           <video
             src={videoSrc}
             controls
-            className="w-full aspect-video max-h-[70vh] min-h-[220px] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm bg-black"
+            className="w-full aspect-video max-h-[640px] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm bg-black"
           />
 
           <div className="mt-2">
@@ -483,6 +301,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       return patterns.some((p) => lowered.includes(p));
     };
 
+    const fullText = message.text || "";
+
     if (shouldCollapseReasoning(fullText)) {
       return (
         <details className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/40 px-3 py-2 text-xs leading-relaxed text-gray-700 dark:text-gray-200">
@@ -527,19 +347,21 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       }
     }
 
-    if (allImages.length > 0) {
+    const imageMarkdownRegex =
+      /!\[[^\]]*]\((data:image\/[a-zA-Z0-9+]+;base64,[^)]+)\)/g;
+    const imageMatches = Array.from(fullText.matchAll(imageMarkdownRegex));
+    const hasImages = imageMatches.length > 0;
+    const strippedText = hasImages
+      ? fullText.replace(imageMarkdownRegex, "").trim()
+      : fullText;
+
+    if (hasImages) {
       return (
         <div className="space-y-3">
           {strippedText && <div>{renderMarkdownContent(strippedText)}</div>}
           <div className="flex flex-wrap gap-3">
-            {allImages.map((src, idx) => {
-              const labelIndex = idx + 1;
-              const timestamp = typeof message.timestamp === 'number' ? message.timestamp : Date.now();
-              const nameBase = `generated_image_${timestamp}_${String(labelIndex).padStart(2, '0')}`;
-              const cacheId =
-                imageCacheReady && cacheHistoryId && cacheLaneId
-                  ? buildImageCacheId(cacheHistoryId, cacheLaneId, message.id, idx)
-                  : undefined;
+            {imageMatches.map((m, idx) => {
+              const src = m[1];
 
               return (
                 <div key={idx} className="max-w-full flex flex-col gap-2">
@@ -551,10 +373,15 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   />
 
                   <button
-                    onClick={() => handleDownloadImage(src, nameBase, cacheId)}
+                    onClick={async () => {
+                      const link = document.createElement("a");
+                      link.href = src;
+                      link.download = `generated_image_${idx + 1}.png`;
+                      link.click();
+                    }}
                     className="w-fit px-3 py-1 bg-green-600 hover:bg-green-500 text-white text-xs rounded-md border border-green-700 shadow-sm"
                   >
-                    下载图片 {labelIndex}
+                    下载图片
                   </button>
                 </div>
               );
@@ -567,29 +394,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     return renderMarkdownContent(fullText);
   };
 
-  const renderUserContent = () => {
-    const userText = message.text || '';
-    const cleaned = stripInlineImageData(stripMarkdownImages(userText)).trim();
-    const lineCount = cleaned ? cleaned.split('\n').filter(Boolean).length : 0;
-    const shouldCollapse = cleaned.length > 120 || lineCount > 4;
-    if (!shouldCollapse || !cleaned) {
-      return renderMarkdownContent(userText);
-    }
-    const previewBase = cleaned.replace(/\s+/g, ' ');
-    const preview = previewBase.length > 60 ? `${previewBase.slice(0, 60)}…` : previewBase;
-    return (
-      <details className="rounded-lg border border-gray-700/60 bg-gray-900/40 px-3 py-2 text-sm text-gray-100">
-        <summary className="cursor-pointer select-none text-gray-200 flex items-center gap-2">
-          <span className="text-xs font-semibold">已收起</span>
-          <span className="text-[10px] text-gray-400 truncate" title={preview}>
-            {preview}
-          </span>
-        </summary>
-        <div className="mt-2">{renderMarkdownContent(userText)}</div>
-      </details>
-    );
-  };
-
   return (
     <div
       className={`group flex w-full mb-6 ${
@@ -597,11 +401,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       }`}
     >
       <div
-        className={`flex flex-col ${
-          isVideoMessage
-            ? "w-full max-w-full"
-            : "max-w-[95%] md:max-w-[90%] lg:max-w-[85%]"
-        } ${isUser ? "items-end" : "items-start"}`}
+        className={`flex flex-col max-w-[95%] md:max-w-[90%] lg:max-w-[85%] ${
+          isUser ? "items-end" : "items-start"
+        }`}
       >
         {shouldShowAssistantLabel && (
           <div className="mb-1 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
@@ -628,7 +430,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   : "bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800"
               }`}
             >
-              {isUser ? renderUserContent() : renderModelContent()}
+              {isUser
+                ? renderMarkdownContent(message.text || "")
+                : renderModelContent()}
             </div>
           </div>
         </div>

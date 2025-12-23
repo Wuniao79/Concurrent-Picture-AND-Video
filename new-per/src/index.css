@@ -1,7 +1,4 @@
 @import 'katex/dist/katex.min.css';
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
 
 /* Global markdown rendering tweaks */
 .markdown-body {
@@ -142,40 +139,4 @@
 .dark select option {
   background-color: #1f2937; /* gray-800 */
   color: #e5e7eb; /* gray-200 */
-}
-
-.light body {
-  background: #f5f7fb;
-}
-
-.light .app-shell {
-  background: #f5f7fb;
-}
-
-.light .app-topbar {
-  background: rgba(255, 255, 255, 0.86);
-  border-color: rgba(148, 163, 184, 0.35);
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
-  backdrop-filter: blur(10px);
-}
-
-.light .app-sidebar {
-  background: #eef2f7;
-  border-color: rgba(148, 163, 184, 0.3);
-}
-
-.light .app-panel {
-  background: #f7f9fc;
-  border-color: rgba(148, 163, 184, 0.3);
-}
-
-.light .app-input-panel {
-  background: #f5f7fb;
-  border-color: rgba(148, 163, 184, 0.3);
-}
-
-.light .chat-grid-card {
-  background: #ffffff;
-  border-color: rgba(148, 163, 184, 0.35);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
 }

@@ -6,26 +6,6 @@
 export type ApiMode = 'openai' | 'gemini';
 export type ThemeMode = 'system' | 'light' | 'dark';
 export type Language = 'system' | 'en' | 'zh';
-export type ToolView = 'promptLibrary' | 'slicer' | 'videoFrames' | 'xhs' | 'more';
-export type GeminiResolution = '1K' | '2K' | '4K';
-export type GeminiAspectRatio =
-  | 'auto'
-  | '21:9'
-  | '16:9'
-  | '3:2'
-  | '4:3'
-  | '5:4'
-  | '1:1'
-  | '4:5'
-  | '3:4'
-  | '2:3'
-  | '9:16';
-
-export type GeminiImageSettings = {
-  enabled: boolean;
-  resolution: GeminiResolution;
-  aspectRatio: GeminiAspectRatio;
-};
 
 export interface Message {
   id: string;
@@ -66,8 +46,6 @@ export interface LaneState extends LaneConfig {
   /** Current video generation progress 0-100; undefined means unknown. */
   progress?: number;
   error?: string;
-  /** HTTP-ish error code extracted from failures or model logs (e.g. 400/401/500). */
-  errorCode?: number;
 }
 
 export const AVAILABLE_MODELS: Model[] = [

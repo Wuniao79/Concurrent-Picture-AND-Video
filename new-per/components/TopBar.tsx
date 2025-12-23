@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { History, Maximize2, Menu, Minimize2, PanelLeft, Settings, Trash2 } from 'lucide-react';
+import { Menu, PanelLeft, Settings, Trash2, Maximize2, Minimize2, History } from 'lucide-react';
 import { ApiMode, Language, Model, ModelModality } from '../types';
 
 interface TopBarProps {
@@ -17,11 +17,17 @@ interface TopBarProps {
   onToggleHistory: () => void;
   modelModalityFilter: ModelModality | null;
   onToggleModelModalityFilter: (next: ModelModality | null) => void;
+  geminiKeysEnabled: boolean;
+  geminiKeys: { id: string; name: string }[];
+  activeGeminiKeyId: string;
+  onSelectGeminiKey: (id: string) => void;
+  geminiKeySelectDisabled?: boolean;
   apiMode: ApiMode;
   setApiMode: (mode: ApiMode) => void;
   onOpenSettings: () => void;
   isFullView: boolean;
   onToggleFullView: () => void;
+  dailyConcurrencyCount: number;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -38,11 +44,17 @@ export const TopBar: React.FC<TopBarProps> = ({
   onToggleHistory,
   modelModalityFilter,
   onToggleModelModalityFilter,
+  geminiKeysEnabled,
+  geminiKeys,
+  activeGeminiKeyId,
+  onSelectGeminiKey,
+  geminiKeySelectDisabled,
   apiMode,
   setApiMode,
   onOpenSettings,
   isFullView,
   onToggleFullView,
+  dailyConcurrencyCount,
 }) => {
   const resolveModelModality = (model: Model): ModelModality => {
     if (model.modality) return model.modality;
@@ -69,7 +81,9 @@ export const TopBar: React.FC<TopBarProps> = ({
   }, [modelModalityFilter, filteredModels.length, filteredByModality.length, onToggleModelModalityFilter]);
 
   const currentSelectedExists = filteredByModality.some((m) => m.id === selectedModelId);
-  const effectiveSelectedId = currentSelectedExists ? selectedModelId : filteredByModality[0]?.id || selectedModelId;
+  const effectiveSelectedId = currentSelectedExists
+    ? selectedModelId
+    : filteredByModality[0]?.id || selectedModelId;
 
   useEffect(() => {
     if (!effectiveSelectedId) return;
@@ -79,27 +93,28 @@ export const TopBar: React.FC<TopBarProps> = ({
   }, [effectiveSelectedId, selectedModelId, onSelectModel]);
 
   const appName = language === 'zh' ? '枭化物' : 'XiaoHuaWu';
-  const appVersion = 'V3.9-v1';
+  const appVersion = 'v3.4-v1';
+  const showGeminiKeySelect = apiMode === 'gemini' && geminiKeysEnabled && geminiKeys.length > 0;
+  const isExtraKeySelectDisabled = apiMode === 'gemini' && Boolean(geminiKeySelectDisabled);
 
   return (
     <header
-      className={`app-topbar h-16 flex items-center px-4 sticky top-0 bg-white dark:bg-gray-900 z-20 gap-4 ${
+      className={`h-16 flex items-center px-4 sticky top-0 bg-white dark:bg-gray-900 z-20 gap-4 ${
         isFullView ? '' : 'border-b border-gray-300 dark:border-gray-800'
       }`}
     >
-      {/* Left: logo/name */}
-      <div className="flex items-center gap-3 shrink-0 min-w-0">
+      {/* Left: logo/name/concurrency count */}
+      <div className="flex items-center gap-3 min-w-[240px]">
         {!isSidebarOpen && (
           <button
             onClick={onOpenSidebar}
             className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"
-            aria-label={language === 'zh' ? '打开侧边栏' : 'Open sidebar'}
           >
             <PanelLeft size={20} />
           </button>
         )}
         <div className="md:hidden">
-          <button onClick={onToggleSidebar} className="p-2 text-gray-500" aria-label={language === 'zh' ? '菜单' : 'Menu'}>
+          <button onClick={onToggleSidebar} className="p-2 text-gray-500">
             <Menu size={20} />
           </button>
         </div>
@@ -107,10 +122,13 @@ export const TopBar: React.FC<TopBarProps> = ({
           <span>{appName}</span>
           <span className="text-xs text-gray-500 dark:text-gray-400">{appVersion}</span>
         </h1>
+        <div className="hidden md:flex items-center h-8 px-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200">
+          {language === 'zh' ? '今日并发数：' : 'Today lanes:'} {dailyConcurrencyCount}
+        </div>
       </div>
 
-      {/* Center: filters, model select, fullscreen, history */}
-      <div className="flex-1 min-w-0 flex items-center justify-center gap-3 flex-nowrap overflow-x-auto scrollbar-hide">
+      {/* Center: relay/keys, model select, fullscreen */}
+      <div className="flex-1 flex items-center justify-center gap-3 flex-wrap">
         <div className="flex items-center bg-gray-100 dark:bg-gray-900 rounded-lg p-1 border border-gray-300 dark:border-gray-700 h-10">
           {[
             { id: 'video', label: language === 'zh' ? '视频' : 'Video' },
@@ -131,7 +149,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                 onClick={() =>
                   onToggleModelModalityFilter(modelModalityFilter === item.id ? null : (item.id as ModelModality))
                 }
-                className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
                   isActive ? activeClass : 'text-gray-600 dark:text-gray-300'
                 }`}
               >
@@ -140,6 +158,42 @@ export const TopBar: React.FC<TopBarProps> = ({
             );
           })}
         </div>
+
+        {showGeminiKeySelect && (
+          <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-900 rounded-lg p-2 border border-gray-300 dark:border-gray-700 h-10">
+            <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
+              {language === 'zh' ? '更多密钥' : 'Extra keys'}
+            </span>
+            <select
+              value={activeGeminiKeyId || ''}
+              onChange={(e) => onSelectGeminiKey(e.target.value)}
+              disabled={isExtraKeySelectDisabled}
+              className={`bg-transparent text-xs font-medium text-gray-800 dark:text-gray-100 focus:outline-none ${
+                isExtraKeySelectDisabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
+              }`}
+              title={
+                isExtraKeySelectDisabled
+                  ? language === 'zh'
+                    ? '企业级模式已启用，已锁定密钥选择'
+                    : 'Enterprise mode is active; key selection is locked'
+                  : undefined
+              }
+            >
+              <option value="" className="bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
+                {language === 'zh' ? '默认' : 'Default'}
+              </option>
+              {geminiKeys.map((item) => (
+                <option
+                  key={item.id}
+                  value={item.id}
+                  className="bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200"
+                >
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-900 rounded-lg p-1 border border-gray-300 dark:border-gray-700 h-10">
           <span className="text-xs font-medium text-gray-500 dark:text-gray-400 px-2">
@@ -156,41 +210,27 @@ export const TopBar: React.FC<TopBarProps> = ({
               </option>
             ))}
           </select>
+          <button
+            onClick={onToggleFullView}
+            className="w-9 h-9 flex items-center justify-center rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-600 transition-colors"
+            title={
+              language === 'zh'
+                ? isFullView
+                  ? '退出全屏'
+                  : '全屏视图'
+                : isFullView
+                ? 'Exit fullscreen'
+                : 'Fullscreen view'
+            }
+          >
+            {isFullView ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          </button>
         </div>
-
-        <button
-          onClick={onToggleFullView}
-          className={`w-10 h-10 flex items-center justify-center rounded-lg border transition-colors ${
-            isFullView
-              ? 'bg-blue-600 border-blue-600 text-white hover:bg-blue-700'
-              : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-600'
-          }`}
-          title={
-            language === 'zh'
-              ? isFullView
-                ? '退出全屏'
-                : '全屏视图'
-              : isFullView
-              ? 'Exit fullscreen'
-              : 'Fullscreen view'
-          }
-          aria-label={
-            language === 'zh'
-              ? isFullView
-                ? '退出全屏'
-                : '进入全屏'
-              : isFullView
-              ? 'Exit fullscreen'
-              : 'Enter fullscreen'
-          }
-        >
-          {isFullView ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-        </button>
 
         {showHistoryButton && (
           <button
             onClick={onToggleHistory}
-            className={`flex items-center gap-1.5 px-3 h-10 text-sm font-medium rounded-lg border transition-colors ${
+            className={`flex items-center gap-1 px-3 h-9 text-sm font-medium rounded-md border transition-colors ${
               isHistoryOpen
                 ? 'bg-blue-600 border-blue-600 text-white hover:bg-blue-700'
                 : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
@@ -201,14 +241,15 @@ export const TopBar: React.FC<TopBarProps> = ({
             <span className="hidden sm:inline">{language === 'zh' ? '并发历史' : 'History'}</span>
           </button>
         )}
+
       </div>
 
-      {/* Right: clear, mode, settings */}
-      <div className="flex items-center justify-end gap-2 shrink-0">
+      {/* Right: lanes, clear, mode, settings */}
+      <div className="flex items-center justify-end gap-2 flex-wrap min-w-[360px]">
         <button
           onClick={confirmAndClearChats}
-          className="flex items-center gap-1 px-3 h-9 text-sm font-medium rounded-md text-red-500 border border-gray-300 dark:border-gray-700 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-          title={language === 'zh' ? '清空所有对话' : 'Clear all chats'}
+          className="flex items-center gap-1 px-3 h-9 text-sm font-medium text-red-500 border border-gray-300 dark:border-gray-700 transition-colors"
+          title={language === 'zh' ? '清空所有对话' : 'Clear All Chats'}
         >
           <Trash2 size={14} />
           <span className="hidden sm:inline">{language === 'zh' ? '清空' : 'Clear'}</span>
@@ -238,7 +279,6 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           onClick={onOpenSettings}
           className="flex items-center justify-center w-9 h-9 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
-          aria-label={language === 'zh' ? '设置' : 'Settings'}
         >
           <Settings size={18} />
         </button>

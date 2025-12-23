@@ -1,4 +1,4 @@
-import { Message, ModelProvider, Role } from '../types';
+import { GeminiImageSettings, Message, ModelProvider, Role } from '../types';
 import { generateGeminiEnterpriseResponse } from './providers/geminiEnterprise';
 import { generateGeminiOfficialResponse } from './providers/geminiOfficial';
 import { generateOpenAICompatibleResponse } from './providers/openaiCompat';
@@ -69,6 +69,7 @@ type GeminiRequestExtras = {
   geminiEnterpriseProjectId?: string;
   geminiEnterpriseLocation?: string;
   geminiEnterpriseToken?: string;
+  geminiImageSettings?: GeminiImageSettings;
 };
 
 /**
@@ -166,6 +167,7 @@ export async function generateResponse(
           timeoutMs,
           abortSignal,
           customApiBase,
+          imageSettings: extras?.geminiImageSettings,
         })
       );
       return;
@@ -190,6 +192,7 @@ export async function generateResponse(
             customBaseUrl: customApiBase,
             timeoutMs,
             abortSignal,
+            imageSettings: extras?.geminiImageSettings,
           })
         );
         return;
@@ -229,6 +232,7 @@ export async function generateResponse(
         customBaseUrl: '',
         timeoutMs,
         abortSignal,
+        imageSettings: extras?.geminiImageSettings,
       })
     );
     return;

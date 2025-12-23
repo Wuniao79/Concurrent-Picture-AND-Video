@@ -24,7 +24,6 @@ import {
 import { ApiMode, Language, Model, ModelModality, ModelProvider, ThemeMode } from '../types';
 import { RelaySite, GeminiKeySite } from '../hooks/useSettings';
 import { v4 as uuidv4 } from 'uuid';
-import { generateResponse } from '../services/geminiService';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -35,10 +34,6 @@ interface SettingsModalProps {
   setLanguage: (l: Language) => void;
   fontSize: number;
   setFontSize: (s: number) => void;
-  downloadProxyUrl: string;
-  setDownloadProxyUrl: (v: string) => void;
-  concurrencyIntervalSec: number;
-  setConcurrencyIntervalSec: (v: number) => void;
   isStreamEnabled: boolean;
   setIsStreamEnabled: (s: boolean) => void;
   apiMode: ApiMode;
@@ -65,8 +60,6 @@ interface SettingsModalProps {
   setAvailableModels: (models: Model[]) => void;
   devExperimentalEnabled: boolean;
   setDevExperimentalEnabled: (v: boolean) => void;
-  laneCountLimit: number;
-  setLaneCountLimit: (v: number) => void;
   historyButtonEnabled: boolean;
   setHistoryButtonEnabled: (v: boolean) => void;
   moreImagesEnabled: boolean;
@@ -75,14 +68,6 @@ interface SettingsModalProps {
   setDevTbd1Enabled: (v: boolean) => void;
   devTbd2Enabled: boolean;
   setDevTbd2Enabled: (v: boolean) => void;
-  devFuture1Enabled: boolean;
-  setDevFuture1Enabled: (v: boolean) => void;
-  devFuture2Enabled: boolean;
-  setDevFuture2Enabled: (v: boolean) => void;
-  devFuture3Enabled: boolean;
-  setDevFuture3Enabled: (v: boolean) => void;
-  laneLimitUnlocked: boolean;
-  setLaneLimitUnlocked: (v: boolean) => void;
   relays: RelaySite[];
   setRelays: (sites: RelaySite[]) => void;
   activeRelayId: string;
@@ -91,14 +76,10 @@ interface SettingsModalProps {
   setRelayEnabled: (v: boolean) => void;
   geminiKeys: GeminiKeySite[];
   setGeminiKeys: (sites: GeminiKeySite[]) => void;
-  geminiKeyPoolEnabled: boolean;
-  setGeminiKeyPoolEnabled: (v: boolean) => void;
-  todayConcurrencyCount: number;
-  totalConcurrencyCount: number;
-  downloadDirectorySupported: boolean;
-  downloadDirectoryName: string | null;
-  onPickDownloadDirectory: () => Promise<FileSystemDirectoryHandle | null>;
-  onClearDownloadDirectory: () => Promise<void>;
+  activeGeminiKeyId: string;
+  setActiveGeminiKeyId: (id: string) => void;
+  geminiKeysEnabled: boolean;
+  setGeminiKeysEnabled: (v: boolean) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -110,10 +91,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   setLanguage,
   fontSize,
   setFontSize,
-  downloadProxyUrl,
-  setDownloadProxyUrl,
-  concurrencyIntervalSec,
-  setConcurrencyIntervalSec,
   isStreamEnabled,
   setIsStreamEnabled,
   apiMode,
@@ -140,8 +117,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   setAvailableModels,
   devExperimentalEnabled,
   setDevExperimentalEnabled,
-  laneCountLimit,
-  setLaneCountLimit,
   historyButtonEnabled,
   setHistoryButtonEnabled,
   moreImagesEnabled,
@@ -150,14 +125,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   setDevTbd1Enabled,
   devTbd2Enabled,
   setDevTbd2Enabled,
-  devFuture1Enabled,
-  setDevFuture1Enabled,
-  devFuture2Enabled,
-  setDevFuture2Enabled,
-  devFuture3Enabled,
-  setDevFuture3Enabled,
-  laneLimitUnlocked,
-  setLaneLimitUnlocked,
   relays,
   setRelays,
   activeRelayId,
@@ -166,14 +133,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   setRelayEnabled,
   geminiKeys,
   setGeminiKeys,
-  geminiKeyPoolEnabled,
-  setGeminiKeyPoolEnabled,
-  todayConcurrencyCount,
-  totalConcurrencyCount,
-  downloadDirectorySupported,
-  downloadDirectoryName,
-  onPickDownloadDirectory,
-  onClearDownloadDirectory,
+  activeGeminiKeyId,
+  setActiveGeminiKeyId,
+  geminiKeysEnabled,
+  setGeminiKeysEnabled,
 }) => {
   const t = (zh: string, en: string) => (language === 'zh' ? zh : en);
 
@@ -213,128 +176,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [starCount, setStarCount] = useState<number | null>(null);
   const [starLoading, setStarLoading] = useState(false);
   const [showRelayMenu, setShowRelayMenu] = useState(false);
-  const [geminiKeyTestLoading, setGeminiKeyTestLoading] = useState(false);
-  const [geminiKeyTestResults, setGeminiKeyTestResults] = useState<
-    Record<string, { ok: boolean; status?: number; message?: string }>
-  >({});
-  const [geminiKeyImportOpen, setGeminiKeyImportOpen] = useState(false);
-  const [geminiKeyImportText, setGeminiKeyImportText] = useState('');
   const [modelsCollapsed, setModelsCollapsed] = useState(false);
   const [modelsSearch, setModelsSearch] = useState('');
   const isOpenaiMode = apiMode === 'openai';
-  const [aboutVersionTapCount, setAboutVersionTapCount] = useState(0);
-  const [laneLimitGateOpen, setLaneLimitGateOpen] = useState(false);
-  const [laneLimitGateText, setLaneLimitGateText] = useState('');
-  const [laneLimitGateError, setLaneLimitGateError] = useState('');
-  const LANE_LIMIT_GATE_PHRASE = '我是开发者，我自愿承担后果。';
-  const clampConcurrencyInterval = (value: number) => Math.max(0.1, Math.min(60, value));
-  const formatConcurrencyInterval = (value: number) => {
-    if (!Number.isFinite(value)) return '0.5';
-    const fixed = value.toFixed(2);
-    return fixed.replace(/\.?0+$/, '');
-  };
-  const [intervalDraft, setIntervalDraft] = useState(() => formatConcurrencyInterval(concurrencyIntervalSec));
-
-  useEffect(() => {
-    setIntervalDraft(formatConcurrencyInterval(concurrencyIntervalSec));
-  }, [concurrencyIntervalSec]);
-
-  const commitConcurrencyInterval = (rawValue: string) => {
-    const trimmed = rawValue.trim();
-    if (!trimmed) {
-      const fallback = clampConcurrencyInterval(0.1);
-      setConcurrencyIntervalSec(Number(fallback.toFixed(2)));
-      setIntervalDraft(formatConcurrencyInterval(fallback));
-      return;
-    }
-    const parsed = Number.parseFloat(trimmed);
-    if (Number.isNaN(parsed)) {
-      setIntervalDraft(formatConcurrencyInterval(concurrencyIntervalSec));
-      return;
-    }
-    const clamped = clampConcurrencyInterval(parsed);
-    const rounded = Number(clamped.toFixed(2));
-    setConcurrencyIntervalSec(rounded);
-    setIntervalDraft(formatConcurrencyInterval(rounded));
-  };
-
+  const extraToggleOn = isOpenaiMode ? relayEnabled : geminiKeysEnabled;
+  const extraLabel = isOpenaiMode ? t('更多中转站', 'More relays') : t('更多密钥', 'More keys');
+  const extraButtonLabel = isOpenaiMode ? t('更多站点', 'More sites') : t('更多密钥', 'More keys');
 
   const enterpriseFeatureEnabled = Boolean(devExperimentalEnabled && devTbd1Enabled);
   const enterpriseLocationValue = (geminiEnterpriseLocation || 'us-central1').trim() || 'us-central1';
   const enterpriseFixedBaseUrl = `https://${enterpriseLocationValue}-aiplatform.googleapis.com`;
   const isEnterpriseActive = apiMode === 'gemini' && enterpriseFeatureEnabled && geminiEnterpriseEnabled;
-
-  useEffect(() => {
-    if (!isOpen) {
-      setAboutVersionTapCount(0);
-      setLaneLimitGateOpen(false);
-      setLaneLimitGateText('');
-      setLaneLimitGateError('');
-    }
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (activeTab !== 'about') {
-      setAboutVersionTapCount(0);
-    }
-  }, [activeTab]);
-
-  useEffect(() => {
-    if (!laneLimitGateOpen) return;
-    setLaneLimitGateError('');
-  }, [laneLimitGateOpen, laneLimitGateText]);
-
-  const handleAboutVersionTap = () => {
-    if (laneLimitUnlocked) return;
-    setAboutVersionTapCount((prev) => {
-      const next = prev + 1;
-      if (next >= 5) {
-        setLaneLimitGateOpen(true);
-        return 0;
-      }
-      return next;
-    });
-  };
-
-  const confirmLaneLimitUnlock = () => {
-    if (laneLimitUnlocked) return;
-    if (laneLimitGateText !== LANE_LIMIT_GATE_PHRASE) {
-      setLaneLimitGateError(t('请输入完整声明文本后才能确认。', 'Type the exact phrase to confirm.'));
-      return;
-    }
-    setLaneLimitUnlocked(true);
-    setLaneLimitGateOpen(false);
-    setLaneLimitGateText('');
-    setLaneLimitGateError('');
-  };
-
-  const preventCopyPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    e.preventDefault();
-  };
-
-  const APP_VERSION = 'V3.9-v1';
-
-  const handleCopyVersionHover = async () => {
-    try {
-      if (!navigator?.clipboard?.writeText) return;
-      await navigator.clipboard.writeText(APP_VERSION);
-    } catch {
-      // ignore clipboard failures
-    }
-  };
-
-  const canManageExtras = isOpenaiMode ? relayEnabled : geminiKeyPoolEnabled && !isEnterpriseActive;
-  const extraLabel = isOpenaiMode ? t('更多中转站', 'More relays') : t('密钥轮询', 'Key rotation');
-  const extraButtonLabel = isOpenaiMode ? t('更多站点', 'More sites') : t('更多密钥', 'More keys');
-  const invalidGeminiKeyCount = Object.values(geminiKeyTestResults).filter(
-    (r) => !r.ok && (r.status === 401 || r.status === 403)
-  ).length;
-
-  const normalizedNewModelName = newModelName.trim().toLowerCase();
-  const hasDuplicateModelName = Boolean(
-    normalizedNewModelName &&
-      availableModels.some((m) => (m.name || '').trim().toLowerCase() === normalizedNewModelName)
-  );
 
   useEffect(() => {
     const fetchStars = async () => {
@@ -354,176 +206,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     };
     fetchStars();
   }, []);
-
-  const extractStatusCode = (err: any): number | undefined => {
-    if (!err) return undefined;
-    if (typeof err === 'number') return err;
-
-    const direct =
-      typeof err?.status === 'number'
-        ? err.status
-        : typeof err?.statusCode === 'number'
-        ? err.statusCode
-        : undefined;
-    if (typeof direct === 'number') return direct;
-
-    const message = typeof err === 'string' ? err : err?.message ? String(err.message) : String(err);
-    const match = message.match(/\b(400|401|403|429|500)\b/);
-    if (!match) return undefined;
-    return parseInt(match[1], 10);
-  };
-
-  const resolveGeminiTestModelId = (): string => {
-    const geminiTextModel = availableModels.find((m) => m.provider === 'gemini' && resolveModelModality(m) === 'text');
-    return geminiTextModel?.id || 'gemini-3-pro-preview';
-  };
-
-  const handleTestGeminiKeys = async () => {
-    if (apiMode !== 'gemini') return;
-    if (isEnterpriseActive) return;
-
-    const candidates = geminiKeys.filter((k) => Boolean((k.apiKey || '').trim()));
-    if (candidates.length === 0) {
-      alert(t('没有可测试的密钥，请先填写至少一条。', 'No keys to test. Please fill at least one key.'));
-      return;
-    }
-
-    setGeminiKeyTestLoading(true);
-    const nextResults: Record<string, { ok: boolean; status?: number; message?: string }> = {};
-    const modelId = resolveGeminiTestModelId();
-    const apiBase = geminiCustomBaseEnabled ? (geminiApiUrl || '').trim() : '';
-
-    try {
-      for (const keyItem of candidates) {
-        try {
-          let last = '';
-          await generateResponse(
-            modelId,
-            [],
-            'ping',
-            (chunk) => {
-              last = chunk;
-            },
-            (keyItem.apiKey || '').trim(),
-            false,
-            undefined,
-            apiBase,
-            'gemini'
-          );
-          if (!last) {
-            // Some endpoints return empty on invalid keys; treat as failure to be safe.
-            nextResults[keyItem.id] = { ok: false, status: 500, message: 'Empty response' };
-          } else {
-            nextResults[keyItem.id] = { ok: true };
-          }
-        } catch (err: any) {
-          const message = err?.message ? String(err.message) : String(err);
-          const status = extractStatusCode(err) ?? extractStatusCode(message);
-          nextResults[keyItem.id] = { ok: false, status, message };
-        }
-        // Update progressively so users see results quickly.
-        setGeminiKeyTestResults((prev) => ({ ...prev, ...nextResults }));
-      }
-    } finally {
-      setGeminiKeyTestLoading(false);
-    }
-  };
-
-  const handleDeleteInvalidGeminiKeys = () => {
-    if (apiMode !== 'gemini') return;
-
-    const invalidIds = Object.entries(geminiKeyTestResults)
-      .filter(([, r]) => !r.ok && (r.status === 401 || r.status === 403))
-      .map(([id]) => id);
-
-    if (invalidIds.length === 0) {
-      alert(t('没有检测到失效密钥（401/403）。', 'No invalid keys detected (401/403).'));
-      return;
-    }
-
-    const confirmed = confirm(
-      t(`将删除 ${invalidIds.length} 条失效密钥，是否继续？`, `Delete ${invalidIds.length} invalid keys. Continue?`)
-    );
-    if (!confirmed) return;
-
-    const idSet = new Set(invalidIds);
-    const next = geminiKeys.filter((k) => !idSet.has(k.id));
-    if (next.length === 0) {
-      setGeminiKeys([{ id: uuidv4(), name: t('密钥1', 'Key 1'), apiKey: '', enabled: false }]);
-      setGeminiKeyTestResults({});
-      return;
-    }
-    setGeminiKeys(next);
-    setGeminiKeyTestResults((prev) => {
-      const cloned = { ...prev };
-      invalidIds.forEach((id) => {
-        delete cloned[id];
-      });
-      return cloned;
-    });
-  };
-
-  const handleImportGeminiKeys = () => {
-    if (apiMode !== 'gemini') return;
-    if (isEnterpriseActive) return;
-
-    const raw = (geminiKeyImportText || '').replace(/\r\n/g, '\n');
-    const lines = raw
-      .split('\n')
-      .map((l) => l.trim())
-      .filter(Boolean);
-
-    if (lines.length === 0) {
-      alert(t('请粘贴密钥：一行一个。', 'Paste keys: one per line.'));
-      return;
-    }
-
-    const existing = new Set(geminiKeys.map((k) => (k.apiKey || '').trim()).filter(Boolean));
-    const toAdd: string[] = [];
-    let duplicateCount = 0;
-
-    for (const line of lines) {
-      const key = line.trim();
-      if (!key) continue;
-      if (existing.has(key)) {
-        duplicateCount += 1;
-        continue;
-      }
-      existing.add(key);
-      toAdd.push(key);
-    }
-
-    if (toAdd.length === 0) {
-      alert(
-        duplicateCount > 0
-          ? t(`没有可导入的新密钥（重复 ${duplicateCount} 条）。`, `No new keys to import (${duplicateCount} duplicates).`)
-          : t('没有可导入的新密钥。', 'No new keys to import.')
-      );
-      return;
-    }
-
-    const baseIndex = geminiKeys.length;
-    const formatName = (n: number) => (language === 'zh' ? `密钥${n}` : `Key ${n}`);
-    const newItems: GeminiKeySite[] = toAdd.map((apiKey, idx) => ({
-      id: uuidv4(),
-      name: formatName(baseIndex + idx + 1),
-      apiKey,
-      enabled: true,
-    }));
-
-    setGeminiKeys([...geminiKeys, ...newItems]);
-    setGeminiKeyImportText('');
-    setGeminiKeyImportOpen(false);
-
-    alert(
-      duplicateCount > 0
-        ? t(
-            `已导入 ${newItems.length} 条密钥（忽略重复 ${duplicateCount} 条）。`,
-            `Imported ${newItems.length} keys (skipped ${duplicateCount} duplicates).`
-          )
-        : t(`已导入 ${newItems.length} 条密钥。`, `Imported ${newItems.length} keys.`)
-    );
-  };
 
   const handleAddModel = () => {
     if (!newModelId || !newModelName) return;
@@ -581,90 +263,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      {laneLimitGateOpen && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 px-4"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="w-full max-w-2xl rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl overflow-hidden">
-            <div className="p-5 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
-              <div className="text-lg font-bold text-red-600 dark:text-red-400">
-                {t('危险选项警告', 'Dangerous option warning')}
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setLaneLimitGateOpen(false);
-                  setLaneLimitGateText('');
-                  setLaneLimitGateError('');
-                }}
-                className="p-2 rounded-lg text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
-                aria-label={t('关闭', 'Close')}
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="p-5 space-y-4">
-              <div className="text-sm text-gray-700 dark:text-gray-200 leading-relaxed whitespace-pre-line">
-                {t(
-                  '极高量并发会严重导致网页卡顿，并且过大的并发将从创作变为无意义的资源浪费！\n如果使用第三方中转站100%会被拉黑！\n此选项仅给开发人员使用。如出现任何问题后果自负！',
-                  'Extremely high levels of concurrency can severely cause website lag, and excessive concurrency will turn productive activity into meaningless waste of resources. If a third-party relay/proxy service is used, it will be 100% blacklisted. This option is for developers only. Any issues arising from its use are at your own risk.'
-                )}
-              </div>
-
-              <div className="space-y-1">
-                <div className="text-xs text-gray-500 dark:text-gray-400">
-                  {t('我是开发者，我自愿承担后果。', "I'm a developer and I accept the consequences.")}
-                </div>
-                <input
-                  type="text"
-                  value={laneLimitGateText}
-                  onChange={(e) => setLaneLimitGateText(e.target.value)}
-                  onCopy={preventCopyPaste}
-                  onCut={preventCopyPaste}
-                  onPaste={preventCopyPaste}
-                  placeholder={t('请手动输入上述声明（禁止复制粘贴）', 'Type the phrase above (copy/paste disabled)')}
-                  className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-red-500/30"
-                />
-                {laneLimitGateError && (
-                  <div className="text-xs text-red-600 dark:text-red-400">{laneLimitGateError}</div>
-                )}
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLaneLimitGateOpen(false);
-                    setLaneLimitGateText('');
-                    setLaneLimitGateError('');
-                  }}
-                  className="px-4 h-10 rounded-xl border border-gray-200 dark:border-gray-700 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
-                >
-                  {t('取消', 'Cancel')}
-                </button>
-                <button
-                  type="button"
-                  onClick={confirmLaneLimitUnlock}
-                  disabled={laneLimitGateText !== LANE_LIMIT_GATE_PHRASE}
-                  className="px-4 h-10 rounded-xl text-sm font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {t('确认启用', 'Enable')}
-                </button>
-              </div>
-
-              <div className="text-[11px] text-gray-500 dark:text-gray-400">
-                {t(
-                  '注意：此开关一旦启用，只能通过“数据 → 清空本地数据”来关闭。',
-                  'Note: once enabled, it can only be disabled by clearing local data.'
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
       <div className="bg-white dark:bg-gray-900 w-[90%] max-w-5xl h-[85vh] rounded-2xl shadow-2xl flex overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         <div className="w-64 bg-gray-50/80 dark:bg-gray-800/50 border-r border-gray-200 dark:border-gray-700 flex flex-col">
           <div className="p-6 pt-8">
@@ -816,12 +414,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </button>
                   </div>
 
-                    <div className="flex items-center justify-between py-2">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-sm text-gray-700 dark:text-gray-200">{t('更多图片', 'More images')}</span>
-                        <span className="text-xs text-gray-500 dark:text-gray-400">
-                          {t('（Sora2目前只支持一张图片，多张图片可能会报错）', '(Sora2 currently supports only one image; multiple images may error)')}
-                        </span>
+                  <div className="flex items-center justify-between py-2 md:col-span-2">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-sm text-gray-700 dark:text-gray-200">{t('更多图片', 'More images')}</span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        {t('（Sora2目前只支持一张图片，多张图片可能会报错）', '(Sora2 currently supports only one image; multiple images may error)')}
+                      </span>
                     </div>
                     <button
                       onClick={() => setMoreImagesEnabled(!moreImagesEnabled)}
@@ -837,7 +435,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       />
                     </button>
                   </div>
-
                 </div>
               </div>
             </div>
@@ -1073,12 +670,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                   </div>
 
-                  {hasDuplicateModelName && (
-                    <div className="text-xs text-red-500">
-                      {t('已存在同名模型，可以使用搜索模型查看。', 'A model with the same name already exists. Use search to find it.')}
-                    </div>
-                  )}
-
                   <button
                     onClick={handleAddModel}
                     disabled={!newModelId || !newModelName}
@@ -1130,107 +721,31 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {isOpenaiMode ? (
-                      <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-                        <span className="text-xs text-gray-600 dark:text-gray-300">{extraLabel}</span>
-                        <button
-                          onClick={() => setRelayEnabled(!relayEnabled)}
-                          className={`w-10 h-5 flex items-center rounded-full p-0.5 cursor-pointer transition-colors ${
-                            relayEnabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'
+                    <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                      <span className="text-xs text-gray-600 dark:text-gray-300">{extraLabel}</span>
+                      <button
+                        onClick={() =>
+                          isOpenaiMode ? setRelayEnabled(!relayEnabled) : setGeminiKeysEnabled(!geminiKeysEnabled)
+                        }
+                        className={`w-10 h-5 flex items-center rounded-full p-0.5 cursor-pointer transition-colors ${
+                          extraToggleOn ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'
+                        }`}
+                      >
+                        <div
+                          className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-300 ${
+                            extraToggleOn ? 'translate-x-5' : ''
                           }`}
-                        >
-                          <div
-                            className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-300 ${
-                              relayEnabled ? 'translate-x-5' : ''
-                            }`}
-                          />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-                        <span className="text-xs text-gray-600 dark:text-gray-300">{t('密钥轮询', 'Key rotation')}</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (isEnterpriseActive) return;
-                            setGeminiKeyPoolEnabled(!geminiKeyPoolEnabled);
-                          }}
-                          disabled={isEnterpriseActive}
-                          className={`w-10 h-5 flex items-center rounded-full p-0.5 transition-colors ${
-                            geminiKeyPoolEnabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'
-                          } ${isEnterpriseActive ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
-                          title={
-                            isEnterpriseActive
-                              ? t('企业API模式使用访问令牌，不支持密钥轮询', 'Enterprise API uses access token; key rotation is disabled')
-                              : undefined
-                          }
-                        >
-                          <div
-                            className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-300 ${
-                              geminiKeyPoolEnabled ? 'translate-x-5' : ''
-                            }`}
-                          />
-                        </button>
-                      </div>
-                    )}
+                        />
+                      </button>
+                    </div>
                   </div>
                 </div>
 
-                {canManageExtras && showRelayMenu && (
+                {extraToggleOn && showRelayMenu && (
                   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
                     <div className="w-[520px] max-w-[92vw] bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-4 space-y-3 relative">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100 truncate">
-                            {extraButtonLabel}
-                          </h4>
-                          {!isOpenaiMode && (
-                            <div className="flex items-center gap-2 shrink-0">
-                              <button
-                                type="button"
-                                onClick={handleTestGeminiKeys}
-                                disabled={geminiKeyTestLoading || isEnterpriseActive}
-                                className={`px-3 h-9 rounded-lg border text-sm transition-colors ${
-                                  geminiKeyTestLoading
-                                    ? 'bg-gray-200 dark:bg-gray-800 text-gray-500 cursor-wait'
-                                    : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
-                                } ${isEnterpriseActive ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                title={
-                                  isEnterpriseActive
-                                    ? t('企业API模式使用访问令牌，不支持测试密钥', 'Enterprise API uses access token; key test is disabled')
-                                    : undefined
-                                }
-                              >
-                                {geminiKeyTestLoading ? t('测试中...', 'Testing...') : t('测试密钥', 'Test')}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={handleDeleteInvalidGeminiKeys}
-                                disabled={invalidGeminiKeyCount === 0}
-                                className={`px-3 h-9 rounded-lg border text-sm transition-colors ${
-                                  invalidGeminiKeyCount === 0
-                                    ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-not-allowed'
-                                    : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
-                                }`}
-                                title={t('一键删除失效密钥（401/403）', 'Delete invalid keys (401/403)')}
-                              >
-                                {t('删除失效', 'Delete invalid')}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setGeminiKeyImportOpen((v) => !v)}
-                                className={`px-3 h-9 rounded-lg border text-sm transition-colors ${
-                                  geminiKeyImportOpen
-                                    ? 'bg-blue-600 border-blue-600 text-white hover:bg-blue-700'
-                                    : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
-                                }`}
-                                title={t('一键导入：粘贴多行密钥', 'Import: paste multi-line keys')}
-                              >
-                                {t('一键导入', 'Import')}
-                              </button>
-                            </div>
-                          )}
-                        </div>
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{extraButtonLabel}</h4>
                         <button
                           className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                           onClick={() => setShowRelayMenu(false)}
@@ -1239,44 +754,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           <X size={18} />
                         </button>
                       </div>
-
-                      {!isOpenaiMode && geminiKeyImportOpen && (
-                        <div className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 space-y-2">
-                          <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-                            {t('一键导入密钥', 'Import keys')}
-                          </div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">
-                            {t('一行一个密钥，自动去重，空行会被忽略。', 'One key per line. Duplicates are ignored.')}
-                          </div>
-                          <textarea
-                            value={geminiKeyImportText}
-                            onChange={(e) => setGeminiKeyImportText(e.target.value)}
-                            placeholder={t('在这里粘贴多行密钥...', 'Paste multi-line keys here...')}
-                            className="w-full min-h-[120px] px-3 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                          />
-                          <div className="flex justify-end gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setGeminiKeyImportOpen(false);
-                                setGeminiKeyImportText('');
-                              }}
-                              className="px-3 h-9 rounded-lg border border-gray-200 dark:border-gray-700 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
-                            >
-                              {t('取消', 'Cancel')}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={handleImportGeminiKeys}
-                              disabled={!geminiKeyImportText.trim()}
-                              className="px-3 h-9 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              {t('导入', 'Import')}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
                       <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
                         {(isOpenaiMode ? relays : geminiKeys).map((site) => (
                           <div
@@ -1286,20 +763,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             <div className="flex items-center justify-between gap-2">
                               <div className="flex items-center gap-2">
                                 <span className="font-semibold text-gray-800 dark:text-gray-100">{site.name}</span>
-                                {!isOpenaiMode && geminiKeyTestResults[site.id] && (
-                                  <span
-                                    className={`text-[11px] font-medium whitespace-nowrap ${
-                                      geminiKeyTestResults[site.id].ok
-                                        ? 'text-green-600 dark:text-green-400'
-                                        : 'text-red-600 dark:text-red-400'
-                                    }`}
-                                    title={geminiKeyTestResults[site.id].message}
-                                  >
-                                    {geminiKeyTestResults[site.id].ok
-                                      ? t('可用', 'OK')
-                                      : `[${geminiKeyTestResults[site.id].status ?? 'ERR'}]`}
-                                  </span>
-                                )}
                                 <button
                                   className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
                                   onClick={() => {
@@ -1328,6 +791,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     } else {
                                       const next = geminiKeys.filter((r) => r.id !== site.id);
                                       setGeminiKeys(next);
+                                      if (activeGeminiKeyId === site.id) {
+                                        setActiveGeminiKeyId('');
+                                      }
                                     }
                                   }}
                                 >
@@ -1353,6 +819,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                         r.id === site.id ? { ...r, enabled: nowEnabled } : r
                                       );
                                       setGeminiKeys(next);
+                                      if (activeGeminiKeyId === site.id && !nowEnabled) {
+                                        setActiveGeminiKeyId('');
+                                      }
+                                      if (nowEnabled && !activeGeminiKeyId) {
+                                        setActiveGeminiKeyId(site.id);
+                                      }
                                     }
                                   }}
                                   className={`w-10 h-5 flex items-center rounded-full p-0.5 cursor-pointer transition-colors ${
@@ -1513,7 +985,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </button>
                       )}
 
-                      {canManageExtras && (
+                      {extraToggleOn && (
                         <button
                           type="button"
                           onClick={() => setShowRelayMenu((v) => !v)}
@@ -1649,167 +1121,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="space-y-10 max-w-3xl">
               <h2 className="text-3xl font-bold mb-6">{t('数据', 'Data')}</h2>
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold">{t('并发统计', 'Concurrency stats')}</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-900/60 p-4">
-                    <div className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                      {t('今日并发数', 'Today lanes')}
-                    </div>
-                    <div className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
-                      {todayConcurrencyCount.toLocaleString()}
-                    </div>
-                  </div>
-                  <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-900/60 p-4">
-                    <div className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                      {t('总并发次数', 'Total lanes')}
-                    </div>
-                    <div className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
-                      {totalConcurrencyCount.toLocaleString()}
-                    </div>
-                  </div>
-                </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {t('统计来源于本地历史记录。', 'Counts are based on local history records.')}
-                </p>
-              </div>
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">{t('并发间隔', 'Concurrency interval')}</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  {t(
-                    '控制每个并发通道的启动间隔（秒）。数值越大，通道启动越慢。',
-                    'Controls the delay (seconds) between each lane start. Larger values mean slower staggered starts.'
-                  )}
-                </p>
-                <div className="flex flex-wrap items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const next = clampConcurrencyInterval(Number((concurrencyIntervalSec - 0.1).toFixed(2)));
-                      setConcurrencyIntervalSec(next);
-                      setIntervalDraft(formatConcurrencyInterval(next));
-                    }}
-                    className="h-9 w-9 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/30 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
-                    aria-label={t('减少', 'Decrease')}
-                  >
-                    -
-                  </button>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    pattern="[0-9.]*"
-                    value={intervalDraft}
-                    onChange={(e) => {
-                      const cleaned = e.target.value.replace(/[^0-9.]/g, '');
-                      if (!cleaned) {
-                        setIntervalDraft('');
-                        return;
-                      }
-                      const parts = cleaned.split('.');
-                      const normalized = parts.length > 1 ? `${parts[0]}.${parts.slice(1).join('')}` : parts[0];
-                      setIntervalDraft(normalized);
-                    }}
-                    onBlur={() => commitConcurrencyInterval(intervalDraft)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        commitConcurrencyInterval(intervalDraft);
-                      }
-                    }}
-                    className="h-9 w-24 text-center rounded-xl border border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/30 text-gray-800 dark:text-gray-100 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const next = clampConcurrencyInterval(Number((concurrencyIntervalSec + 0.1).toFixed(2)));
-                      setConcurrencyIntervalSec(next);
-                      setIntervalDraft(formatConcurrencyInterval(next));
-                    }}
-                    className="h-9 w-9 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/30 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
-                    aria-label={t('增加', 'Increase')}
-                  >
-                    +
-                  </button>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">{t('秒', 'sec')}</span>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    {t('范围：0.1 秒 - 60 秒', 'Range: 0.1s - 60s')}
-                  </span>
-                </div>
-              </div>
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">{t('默认下载目录', 'Default download folder')}</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  {t(
-                    '一键下载会在该目录下自动创建并发历史文件夹。',
-                    'Bulk download will create a concurrency history folder inside this directory.'
-                  )}
-                </p>
-                <div className="flex flex-wrap items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => void onPickDownloadDirectory()}
-                    disabled={!downloadDirectorySupported}
-                    title={
-                      downloadDirectorySupported
-                        ? t('选择默认下载文件夹', 'Pick a default download folder')
-                        : t('当前浏览器不支持文件夹选择', 'Folder picker is not supported')
-                    }
-                    className={`inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition-colors ${
-                      downloadDirectorySupported
-                        ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                        : 'bg-gray-300 dark:bg-gray-700 text-gray-600 dark:text-gray-400 cursor-not-allowed'
-                    }`}
-                  >
-                    {t('选择文件夹', 'Pick folder')}
-                  </button>
-                  {downloadDirectoryName && (
-                    <button
-                      type="button"
-                      onClick={() => void onClearDownloadDirectory()}
-                      className="inline-flex items-center px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/40 text-gray-700 dark:text-gray-200 text-sm font-medium hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
-                    >
-                      {t('清除选择', 'Clear selection')}
-                    </button>
-                  )}
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    {downloadDirectoryName
-                      ? `${t('已选择：', 'Selected: ')}${downloadDirectoryName}`
-                      : t('未选择', 'Not selected')}
-                  </span>
-                </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {t(
-                    '浏览器不会暴露完整路径，仅显示文件夹名称。',
-                    'Browsers do not expose full paths; only folder names are shown.'
-                  )}
-                </p>
-                {!downloadDirectorySupported && (
-                  <p className="text-xs text-amber-600 dark:text-amber-300">
-                    {t('请使用 Chrome/Edge 且通过 https/localhost 打开。', 'Use Chrome/Edge over https/localhost.')}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">{t('下载代理', 'Download proxy')}</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  {t(
-                    '用于解决跨域图片无法下载的问题（可选）。支持使用 {url} 作为占位符。',
-                    'Optional proxy for cross-origin image downloads. Supports {url} placeholder.'
-                  )}
-                </p>
-                <input
-                  type="text"
-                  value={downloadProxyUrl}
-                  onChange={(e) => setDownloadProxyUrl(e.target.value)}
-                  placeholder="https://proxy.example.com/fetch?url="
-                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-900/40 px-3 py-2 text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                />
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {t(
-                    '示例：https://corsproxy.io/? 或 https://proxy.example.com/fetch?url= 或 https://proxy.example.com/{url}',
-                    'Example: https://corsproxy.io/? or https://proxy.example.com/fetch?url= or https://proxy.example.com/{url}'
-                  )}
-                </p>
-              </div>
-              <div className="space-y-4">
                 <h3 className="text-lg font-semibold">{t('清空本地数据', 'Clear local data')}</h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
                   {t(
@@ -1819,14 +1130,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </p>
                 <button
                   type="button"
-                  onClick={async () => {
+                  onClick={() => {
                     if (window.confirm(t('确定要清空本地数据吗？这会删除本机上的所有配置与缓存。', 'Are you sure to clear local data? This removes all local config and cache.'))) {
                       try {
                         localStorage.clear();
                       } catch (e) {
                         console.error(e);
                       }
-                      await onClearDownloadDirectory();
                       window.location.reload();
                     }
                   }}
@@ -1856,14 +1166,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
               <div className="space-y-3">
                 <h2 className="text-4xl font-bold text-gray-900 dark:text-white">并发创作工作站</h2>
-                <button
-                  type="button"
-                  onClick={handleAboutVersionTap}
-                  onMouseEnter={() => void handleCopyVersionHover()}
-                  className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-200 text-sm font-semibold select-none"
-                >
-                  {APP_VERSION}
-                </button>
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-200 text-sm font-semibold">
+                  v3.4-v1
+                </div>
                 <p className="text-base text-gray-600 dark:text-gray-300 max-w-2xl leading-relaxed">
                   此项目是一款面向多模态的并发工作站，支持同时调度 OpenAI 与 Gemini 模型，覆盖文本、图像与视频生成。
                   内置并发历史追踪、可视化网格与分栏聊天，并提供开发者开关、快捷模型切换和本地持久化能力，帮助你高效迭代创意和脚本。
@@ -1934,56 +1239,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </p>
 
               <div className="space-y-3">
-                {laneLimitUnlocked && (
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                        {t('并发数上限', 'Lane limit')}
-                      </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">
-                        {t('限制并发输入与新对话的最大并发数（最高 999）', 'Caps lane input and new-chat lanes (max 999)')}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setLaneCountLimit(Math.max(1, Math.min(999, laneCountLimit - 1)))}
-                        className="h-9 w-9 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/30 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
-                        aria-label={t('减少', 'Decrease')}
-                      >
-                        -
-                      </button>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        value={String(laneCountLimit)}
-                        onChange={(e) => {
-                          const numeric = e.target.value.replace(/[^0-9]/g, '');
-                          if (!numeric) {
-                            setLaneCountLimit(1);
-                            return;
-                          }
-                          const n = parseInt(numeric, 10);
-                          if (isNaN(n)) return;
-                          setLaneCountLimit(Math.max(1, Math.min(999, n)));
-                        }}
-                        className="h-9 w-20 text-center rounded-xl border border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/30 text-gray-800 dark:text-gray-100 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                        aria-label={t('并发数上限', 'Lane limit')}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setLaneCountLimit(Math.max(1, Math.min(999, laneCountLimit + 1)))}
-                        className="h-9 w-9 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/30 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
-                        aria-label={t('增加', 'Increase')}
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                )}
-
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-sm font-medium text-gray-700 dark:text-gray-200">{t('总开关', 'Master switch')}</div>
@@ -2011,44 +1266,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       id: 'tbd1',
                       value: devTbd1Enabled,
                       setValue: setDevTbd1Enabled,
-                      title: t('Gemini企业级API', 'Gemini Enterprise API'),
-                      desc: t('（未测试，等有缘人赞助GCP）', '(Untested; waiting for GCP sponsorship)'),
+                      desc: t('企业级API，（未测试，等有缘人赞助GCP）', 'Enterprise API (untested; waiting for GCP sponsorship)'),
                     },
                     {
                       id: 'tbd2',
                       value: devTbd2Enabled,
                       setValue: setDevTbd2Enabled,
-                      title: t('视频模型突破对话限制', 'Video model chat limit override'),
-                      desc: t(
-                        '大部分视频模型都是一次性对话，开启此功能可能会有引发bug',
-                        'Most video models are one-shot; enabling this may cause bugs.'
-                      ),
-                    },
-                    {
-                      id: 'future1',
-                      value: devFuture1Enabled,
-                      setValue: setDevFuture1Enabled,
-                      title: t('未来功能1', 'Future feature 1'),
-                      desc: t('未想好，先占位给后续接入新功能', 'Placeholder for future features.'),
-                    },
-                    {
-                      id: 'future2',
-                      value: devFuture2Enabled,
-                      setValue: setDevFuture2Enabled,
-                      title: t('未来功能2', 'Future feature 2'),
-                      desc: t('未想好，先占位给后续接入新功能', 'Placeholder for future features.'),
-                    },
-                    {
-                      id: 'future3',
-                      value: devFuture3Enabled,
-                      setValue: setDevFuture3Enabled,
-                      title: t('未来功能3', 'Future feature 3'),
-                      desc: t('未想好，先占位给后续接入新功能', 'Placeholder for future features.'),
+                      desc: t('占位开关 2（后续接入新功能）', 'Placeholder toggle 2 (for future features)'),
                     },
                   ].map((item) => (
                     <div key={item.id} className="flex items-center justify-between">
                       <div>
-                        <div className="text-sm font-medium text-gray-700 dark:text-gray-200">{item.title}</div>
+                        <div className="text-sm font-medium text-gray-700 dark:text-gray-200">{t('还没想好', 'TBD')}</div>
                         <div className="text-xs text-gray-500 dark:text-gray-400">{item.desc}</div>
                       </div>
                       <button
@@ -2075,7 +1304,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
             </div>
           )}
-
         </div>
       </div>
     </div>

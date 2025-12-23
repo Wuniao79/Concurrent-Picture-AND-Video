@@ -1,15 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowUp, Plus, X, Expand, Minimize2, Lock, Unlock, Building2, Shuffle, Download, Loader2, ChevronDown, ChevronUp, Sparkles, SlidersHorizontal, Image as ImageIcon, Film, LayoutGrid, Layers } from 'lucide-react';
-import { ToolView } from '../types';
+import { ArrowUp, Plus, X, SlidersHorizontal, Expand, Minimize2, Lock, Unlock, Building2 } from 'lucide-react';
 
 interface ChatInputProps {
   onSend: (text: string, images: string[]) => void;
   language: 'en' | 'zh' | 'system';
   isGenerating: boolean;
-  inputDisabled?: boolean;
-  inputDisabledHint?: string;
   onOpenSettings?: () => void;
-  onOpenTool?: (tool: ToolView) => void;
   laneCountInput: string;
   updateLaneCount: (value: string) => void;
   laneLocked: boolean;
@@ -22,32 +18,13 @@ interface ChatInputProps {
   relays?: { id: string; name: string }[];
   activeRelayId?: string;
   onSelectRelay?: (id: string) => void;
-  showKeyRotationButton?: boolean;
-  keyRotationEnabled?: boolean;
-  onToggleKeyRotation?: () => void;
-  showBulkDownload?: boolean;
-  bulkDownloadDisabled?: boolean;
-  bulkDownloadLoading?: boolean;
-  bulkDownloadMessage?: string;
-  bulkDownloadMessageTone?: 'neutral' | 'success' | 'error';
-  onBulkDownload?: () => void;
-  showStopQueue?: boolean;
-  onStopQueue?: () => void;
-  isCollapsed?: boolean;
-  onCollapseChange?: (next: boolean) => void;
-  isFullView?: boolean;
-  laneNavItems?: { id: string; label: string; isActive?: boolean; status?: 'idle' | 'running' | 'done' | 'error' }[];
-  onSelectLane?: (id: string) => void;
-  isMultiLaneLayout?: boolean;
 }
 
 export const ChatInput: React.FC<ChatInputProps> = ({
   onSend,
   language,
   isGenerating,
-  inputDisabled = false,
-  inputDisabledHint,
-  onOpenTool,
+  onOpenSettings,
   laneCountInput,
   updateLaneCount,
   laneLocked,
@@ -60,39 +37,11 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   relays,
   activeRelayId,
   onSelectRelay,
-  showKeyRotationButton,
-  keyRotationEnabled,
-  onToggleKeyRotation,
-  showBulkDownload,
-  bulkDownloadDisabled,
-  bulkDownloadLoading,
-  bulkDownloadMessage,
-  bulkDownloadMessageTone = 'neutral',
-  onBulkDownload,
-  showStopQueue,
-  onStopQueue,
-  isCollapsed,
-  onCollapseChange,
-  isFullView,
-  laneNavItems,
-  onSelectLane,
-  isMultiLaneLayout = false,
 }) => {
   const [promptInput, setPromptInput] = useState('');
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [localCollapsed, setLocalCollapsed] = useState(false);
-  const [isToolMenuOpen, setIsToolMenuOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const toolMenuRef = useRef<HTMLDivElement>(null);
-  const effectiveCollapsed = typeof isCollapsed === 'boolean' ? isCollapsed : localCollapsed;
-  const setCollapsed = (next: boolean) => {
-    if (onCollapseChange) {
-      onCollapseChange(next);
-    } else {
-      setLocalCollapsed(next);
-    }
-  };
 
   const IMAGE_MAX_DIMENSION = 1024;
   const IMAGE_TARGET_MAX_BYTES = 1_200_000;
@@ -103,25 +52,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       setSelectedImages((prev) => prev.slice(0, 1));
     }
   }, [moreImagesEnabled, selectedImages.length]);
-
-  useEffect(() => {
-    if (effectiveCollapsed && isExpanded) {
-      setIsExpanded(false);
-    }
-  }, [effectiveCollapsed, isExpanded]);
-
-  useEffect(() => {
-    if (!isToolMenuOpen) return;
-    const handleClick = (event: MouseEvent) => {
-      if (toolMenuRef.current && !toolMenuRef.current.contains(event.target as Node)) {
-        setIsToolMenuOpen(false);
-      }
-    };
-    window.addEventListener('mousedown', handleClick);
-    return () => {
-      window.removeEventListener('mousedown', handleClick);
-    };
-  }, [isToolMenuOpen]);
 
   const estimateDataUrlBytes = (dataUrl: string) => {
     const comma = dataUrl.indexOf(',');
@@ -240,7 +170,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (inputDisabled) return;
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleTriggerSend();
@@ -248,7 +177,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   };
 
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    if (inputDisabled) return;
     const dt = e.clipboardData;
     if (!dt) return;
 
@@ -271,7 +199,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   };
 
   const handleTriggerSend = () => {
-    if (inputDisabled) return;
     if ((!promptInput.trim() && selectedImages.length === 0) || isGenerating) return;
     onSend(promptInput, selectedImages);
     setPromptInput('');
@@ -279,69 +206,14 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   };
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (inputDisabled) return;
     const files = Array.from(e.target.files || []);
     if (files.length > 0) void addImagesFromFiles(files);
     e.target.value = '';
   };
 
-  const widthClass = isExpanded ? '' : isMultiLaneLayout ? 'max-w-none' : 'max-w-6xl';
-
-  if (effectiveCollapsed) {
-    const navItems = Array.isArray(laneNavItems) ? laneNavItems.slice(0, 20) : [];
-    const showLaneNav = Boolean(isFullView && navItems.length > 0 && onSelectLane);
-    const layoutClass = showLaneNav ? 'justify-between' : 'justify-end';
-    return (
-      <div className="w-full flex justify-center px-6 pb-4">
-        <div className={`w-full ${widthClass} flex items-end ${layoutClass} gap-4`}>
-          {showLaneNav && (
-            <div className="grid grid-cols-10 gap-0.5">
-              {navItems.map((item, idx) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => onSelectLane?.(item.id)}
-                  className={`h-7 w-8 text-[9px] font-semibold rounded-md border transition-colors flex items-center gap-0.5 px-0.5 ${
-                    item.isActive
-                      ? 'bg-blue-600 border-blue-600 text-white'
-                      : 'bg-white/60 dark:bg-gray-900/40 border-gray-200/70 dark:border-white/10 text-gray-700 dark:text-gray-200 hover:bg-gray-100/70 dark:hover:bg-white/5'
-                  }`}
-                  title={item.label || String(idx + 1)}
-                >
-                  <span
-                    className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${
-                      item.status === 'error'
-                        ? 'bg-red-500'
-                        : item.status === 'running'
-                        ? 'bg-yellow-400 animate-pulse'
-                        : item.status === 'done'
-                        ? 'bg-emerald-400'
-                        : 'bg-gray-400/70'
-                    }`}
-                  />
-                  <span className="text-left">{item.label || idx + 1}</span>
-                </button>
-              ))}
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={() => setCollapsed(false)}
-            className="h-12 w-12 flex flex-col items-center justify-center gap-0.5 rounded-lg border border-gray-200/70 dark:border-white/10 bg-white/60 dark:bg-gray-900/40 text-gray-700 dark:text-gray-200 text-[9px] font-semibold hover:bg-gray-100/70 dark:hover:bg-white/5 transition-colors"
-            title={language === 'zh' ? '打开输入栏' : 'Show input'}
-            aria-label={language === 'zh' ? '打开输入栏' : 'Show input'}
-          >
-            <ChevronUp size={18} />
-            <span>{language === 'zh' ? '打开' : 'Open'}</span>
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="w-full flex justify-center px-6 pb-5">
-      <div className={`w-full ${widthClass}`}>
+      <div className={`w-full ${isExpanded ? '' : 'max-w-6xl'}`}>
         {selectedImages.length > 0 && (
           <div className="flex flex-wrap gap-3 mb-3">
             {selectedImages.map((img, idx) => (
@@ -375,7 +247,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 onChange={(e) => setPromptInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
-                disabled={inputDisabled}
                 placeholder={
                   language === 'zh'
                     ? '输入问题…（Enter 发送，Shift+Enter 换行）'
@@ -383,12 +254,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 }
                 className={`w-full bg-transparent text-gray-900 dark:text-gray-100 placeholder-gray-500/70 dark:placeholder-gray-400/60 text-base resize-none focus:outline-none rounded-2xl px-3 py-2.5 border border-transparent focus:border-blue-500/25 focus:bg-white/60 dark:focus:bg-white/5 transition-colors ${
                   isExpanded ? 'min-h-[220px]' : 'min-h-[56px]'
-                } ${inputDisabled ? 'opacity-60 cursor-not-allowed' : ''}`}
+                }`}
                 rows={isExpanded ? 10 : 3}
               />
-              {inputDisabled && inputDisabledHint && (
-                <div className="mt-2 px-3 text-xs text-gray-500 dark:text-gray-400">{inputDisabledHint}</div>
-              )}
             </div>
 
             <input
@@ -398,7 +266,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               accept="image/*"
               multiple={moreImagesEnabled}
               onChange={handleImageSelect}
-              disabled={inputDisabled}
             />
 
             <div className={`px-3 ${isExpanded ? 'pb-4' : 'pb-3'} flex items-center justify-between gap-3`}>
@@ -406,14 +273,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 <div className="relative group">
                   <button
                     type="button"
-                    onClick={() => {
-                      if (inputDisabled) return;
-                      fileInputRef.current?.click();
-                    }}
-                    disabled={inputDisabled}
-                    className={`h-9 w-9 inline-flex items-center justify-center rounded-xl border border-gray-200/70 dark:border-white/10 bg-white/60 dark:bg-gray-900/40 transition-colors text-gray-700 dark:text-gray-200 ${
-                      inputDisabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100/70 dark:hover:bg-white/5'
-                    }`}
+                    onClick={() => fileInputRef.current?.click()}
+                    className="h-9 w-9 inline-flex items-center justify-center rounded-xl border border-gray-200/70 dark:border-white/10 bg-white/60 dark:bg-gray-900/40 hover:bg-gray-100/70 dark:hover:bg-white/5 transition-colors text-gray-700 dark:text-gray-200"
                     aria-label={language === 'zh' ? '上传图片' : 'Upload image'}
                   >
                     <Plus size={18} />
@@ -426,48 +287,26 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                   </div>
                 </div>
 
-                {onOpenTool && (
-                  <div className="relative" ref={toolMenuRef}>
+                {onOpenSettings && (
+                  <div className="relative group">
                     <button
                       type="button"
-                      onClick={() => setIsToolMenuOpen((prev) => !prev)}
+                      onClick={onOpenSettings}
                       className="h-9 w-9 inline-flex items-center justify-center rounded-xl border border-gray-200/70 dark:border-white/10 bg-white/60 dark:bg-gray-900/40 hover:bg-gray-100/70 dark:hover:bg-white/5 transition-colors text-gray-700 dark:text-gray-200"
-                      aria-label={language === 'zh' ? '工具' : 'Tools'}
+                      aria-label={language === 'zh' ? '设置' : 'Settings'}
                     >
                       <SlidersHorizontal size={18} />
                     </button>
-                    {isToolMenuOpen && (
-                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-48 rounded-xl border border-gray-200/70 dark:border-white/10 bg-white/95 dark:bg-gray-900/95 shadow-xl p-2 text-sm">
-                        {[
-                          { id: 'promptLibrary' as ToolView, label: language === 'zh' ? '图片提示词库' : 'Prompt Library', icon: Sparkles },
-                          { id: 'slicer' as ToolView, label: language === 'zh' ? '图片分割工厂' : 'Image Slicer', icon: ImageIcon },
-                          { id: 'videoFrames' as ToolView, label: language === 'zh' ? '提取视频首尾帧' : 'Video Frames', icon: Film },
-                          { id: 'xhs' as ToolView, label: language === 'zh' ? 'XHS 灵感实验室' : 'XHS Lab', icon: LayoutGrid },
-                          { id: 'more' as ToolView, label: language === 'zh' ? '更多功能' : 'More', icon: Layers, disabled: true },
-                        ].map((item) => (
-                          <button
-                            key={item.id}
-                            type="button"
-                            disabled={item.disabled}
-                            onClick={() => {
-                              if (item.disabled) return;
-                              onOpenTool(item.id);
-                              setIsToolMenuOpen(false);
-                            }}
-                            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors ${
-                              item.disabled
-                                ? 'text-gray-400 cursor-default'
-                                : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100/70 dark:hover:bg-white/5'
-                            }`}
-                          >
-                            <item.icon size={16} />
-                            <span className="text-xs font-semibold">{item.label}</span>
-                          </button>
-                        ))}
+                    <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 -top-12 opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 delay-0 group-hover:delay-1000">
+                      <div className="rounded-lg bg-gray-900 text-white text-xs px-3 py-2 shadow-xl border border-white/10 text-center">
+                        <div className="font-medium">{language === 'zh' ? '设置' : 'Settings'}</div>
+                        <div className="text-[10px] text-white/75">{language === 'zh' ? '工具' : 'Tools'}</div>
                       </div>
-                    )}
+                    </div>
                   </div>
                 )}
+
+                <div className="mx-1 h-6 w-px bg-gray-200/70 dark:bg-white/10" />
 
                 <div className="flex items-center gap-2 rounded-xl px-2 py-1.5 bg-white/60 dark:bg-gray-900/40 border border-gray-200/70 dark:border-white/10 shadow-sm">
                   <span className="text-xs font-medium text-gray-500 dark:text-gray-300 hidden sm:inline">
@@ -534,31 +373,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                     </div>
                   )}
 
-                  {showKeyRotationButton && onToggleKeyRotation && (
-                    <button
-                      type="button"
-                      onClick={onToggleKeyRotation}
-                      aria-pressed={Boolean(keyRotationEnabled)}
-                      className={`h-9 inline-flex items-center gap-2 px-3 rounded-xl border text-xs font-semibold transition-colors ${
-                        keyRotationEnabled
-                          ? 'bg-blue-600 border-blue-600 text-white hover:bg-blue-700'
-                          : 'bg-white/60 dark:bg-gray-900/40 text-gray-800 dark:text-gray-100 border-gray-200/70 dark:border-white/10 hover:bg-gray-100/70 dark:hover:bg-white/5'
-                      }`}
-                      title={
-                        language === 'zh'
-                          ? keyRotationEnabled
-                            ? '密钥轮询（已启用，点击关闭）'
-                            : '密钥轮询（未启用，点击开启）'
-                          : keyRotationEnabled
-                          ? 'Key rotation (enabled, click to disable)'
-                          : 'Key rotation (disabled, click to enable)'
-                      }
-                    >
-                      <Shuffle size={14} />
-                      <span>{language === 'zh' ? '密钥轮询' : 'Key rotation'}</span>
-                    </button>
-                  )}
-
 	                {showEnterpriseButton && onToggleEnterpriseEnabled && (
 	                  <button
 	                    type="button"
@@ -584,113 +398,42 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 	                )}
 	              </div>
 
-              <div className="flex flex-col items-end gap-1">
-                <div className="flex items-center gap-2">
-                  {showBulkDownload && onBulkDownload && (
-                    <button
-                      type="button"
-                      onClick={onBulkDownload}
-                      disabled={bulkDownloadDisabled || bulkDownloadLoading}
-                      className={`h-9 inline-flex items-center gap-2 px-3 rounded-xl border text-xs font-semibold transition-colors ${
-                        bulkDownloadDisabled || bulkDownloadLoading
-                          ? 'bg-gray-200/80 dark:bg-white/5 text-gray-400 border-gray-200/60 dark:border-white/10 cursor-not-allowed'
-                          : 'bg-white/60 dark:bg-gray-900/40 text-gray-800 dark:text-gray-100 border-gray-200/70 dark:border-white/10 hover:bg-gray-100/70 dark:hover:bg-white/5'
-                      }`}
-                      title={
-                        bulkDownloadLoading
-                          ? language === 'zh'
-                            ? '下载中...'
-                            : 'Downloading...'
-                          : bulkDownloadDisabled
-                          ? language === 'zh'
-                            ? '暂无可下载的图片'
-                            : 'No images to download'
-                          : language === 'zh'
-                          ? '一键下载所有图片'
-                          : 'Download all images'
-                      }
-                    >
-                      {bulkDownloadLoading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                      <span>
-                        {bulkDownloadLoading
-                          ? language === 'zh'
-                            ? '下载中...'
-                            : 'Downloading...'
-                          : language === 'zh'
-                          ? '一键下载'
-                          : 'Download all'}
-                      </span>
-                    </button>
-                  )}
-                  {showStopQueue && onStopQueue && (
-                    <button
-                      type="button"
-                      onClick={onStopQueue}
-                      className="h-9 inline-flex items-center gap-2 px-3 rounded-xl border text-xs font-semibold transition-colors bg-red-600 border-red-600 text-white hover:bg-red-700"
-                      title={language === 'zh' ? '终止后续排队' : 'Stop queued lanes'}
-                    >
-                      <X size={14} />
-                      <span>{language === 'zh' ? '终止排队' : 'Stop queue'}</span>
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setIsExpanded((v) => !v)}
-                    className="h-9 w-9 inline-flex items-center justify-center rounded-xl border border-gray-200/70 dark:border-white/10 bg-white/40 dark:bg-gray-900/30 hover:bg-gray-100/60 dark:hover:bg-white/5 transition-colors text-gray-700 dark:text-gray-200"
-                    title={
-                      language === 'zh'
-                        ? isExpanded
-                          ? '退出全屏输入'
-                          : '全屏输入'
-                        : isExpanded
-                        ? 'Exit fullscreen'
-                        : 'Fullscreen input'
-                    }
-                  >
-                    {isExpanded ? <Minimize2 size={18} /> : <Expand size={18} />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCollapsed(true)}
-                    className="h-9 w-9 inline-flex items-center justify-center rounded-xl border border-gray-200/70 dark:border-white/10 bg-white/40 dark:bg-gray-900/30 hover:bg-gray-100/60 dark:hover:bg-white/5 transition-colors text-gray-700 dark:text-gray-200"
-                    title={language === 'zh' ? '收起输入栏' : 'Collapse input'}
-                    aria-label={language === 'zh' ? '收起输入栏' : 'Collapse input'}
-                  >
-                    <ChevronDown size={18} />
-                  </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsExpanded((v) => !v)}
+                  className="h-9 w-9 inline-flex items-center justify-center rounded-xl border border-gray-200/70 dark:border-white/10 bg-white/40 dark:bg-gray-900/30 hover:bg-gray-100/60 dark:hover:bg-white/5 transition-colors text-gray-700 dark:text-gray-200"
+                  title={
+                    language === 'zh'
+                      ? isExpanded
+                        ? '退出全屏输入'
+                        : '全屏输入'
+                      : isExpanded
+                      ? 'Exit fullscreen'
+                      : 'Fullscreen input'
+                  }
+                >
+                  {isExpanded ? <Minimize2 size={18} /> : <Expand size={18} />}
+                </button>
 
-                  <button
-                    type="button"
-                    onClick={handleTriggerSend}
-                    disabled={inputDisabled || (!promptInput.trim() && selectedImages.length === 0) || isGenerating}
-                    className={`h-10 w-10 rounded-full inline-flex items-center justify-center border transition-all duration-200 ${
-                      !inputDisabled && (promptInput.trim() || selectedImages.length > 0) && !isGenerating
-                        ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-blue-500/40 shadow-md hover:from-blue-700 hover:to-indigo-700'
-                        : 'bg-gray-200/80 dark:bg-white/5 text-gray-400 border-gray-200/60 dark:border-white/10 cursor-not-allowed opacity-70'
-                    }`}
-                    aria-label={language === 'zh' ? '发送' : 'Send'}
-                    title={language === 'zh' ? '发送' : 'Send'}
-                  >
-                    {isGenerating ? (
-                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : (
-                      <ArrowUp size={18} />
-                    )}
-                  </button>
-                </div>
-                {showBulkDownload && bulkDownloadMessage && (
-                  <div
-                    className={`text-[10px] ${
-                      bulkDownloadMessageTone === 'success'
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : bulkDownloadMessageTone === 'error'
-                        ? 'text-red-500 dark:text-red-400'
-                        : 'text-gray-500 dark:text-gray-400'
-                    }`}
-                  >
-                    {bulkDownloadMessage}
-                  </div>
-                )}
+                <button
+                  type="button"
+                  onClick={handleTriggerSend}
+                  disabled={(!promptInput.trim() && selectedImages.length === 0) || isGenerating}
+                  className={`h-10 w-10 rounded-full inline-flex items-center justify-center border transition-all duration-200 ${
+                    promptInput.trim() || selectedImages.length > 0
+                      ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-blue-500/40 shadow-md hover:from-blue-700 hover:to-indigo-700'
+                      : 'bg-gray-200/80 dark:bg-white/5 text-gray-400 border-gray-200/60 dark:border-white/10 cursor-not-allowed'
+                  }`}
+                  aria-label={language === 'zh' ? '发送' : 'Send'}
+                  title={language === 'zh' ? '发送' : 'Send'}
+                >
+                  {isGenerating ? (
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <ArrowUp size={18} />
+                  )}
+                </button>
               </div>
             </div>
           </div>

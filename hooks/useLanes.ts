@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { generateResponse } from '../services/geminiService';
-import { ApiMode, LaneState, Model, ModelProvider, Role } from '../types';
+import { ApiMode, GeminiImageSettings, LaneState, Model, ModelProvider, Role } from '../types';
 import { createDefaultLane, extractErrorCodeFromText, extractProgressFromText } from '../utils/lane';
 
 const normalizeModelIdValue = (value: unknown): string => {
@@ -11,6 +11,27 @@ const normalizeModelIdValue = (value: unknown): string => {
   }
   return String(value ?? '');
 };
+
+const sleepWithAbort = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new Error('请求已取消'));
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      cleanup();
+      resolve();
+    }, Math.max(0, ms));
+    const onAbort = () => {
+      cleanup();
+      reject(new Error('请求已取消'));
+    };
+    const cleanup = () => {
+      window.clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 
 interface UseLanesOptions {
   selectedModelId: string;
@@ -22,11 +43,13 @@ interface UseLanesOptions {
   geminiApiUrl: string;
   geminiKeyRotationEnabled?: boolean;
   geminiKeyPool?: { id: string; apiKey: string; enabled?: boolean }[];
+  geminiImageSettings?: GeminiImageSettings;
   geminiEnterpriseEnabled?: boolean;
   geminiEnterpriseProjectId?: string;
   geminiEnterpriseLocation?: string;
   geminiEnterpriseToken?: string;
   isStreamEnabled: boolean;
+  concurrencyIntervalSec?: number;
   maxLaneCount?: number;
   onRequireSidebarOpen?: () => void;
   /** Returns the currently bound history/session id for associating background updates. */
@@ -52,11 +75,13 @@ export const useLanes = (options: UseLanesOptions) => {
     geminiApiUrl,
     geminiKeyRotationEnabled,
     geminiKeyPool,
+    geminiImageSettings,
     geminiEnterpriseEnabled,
     geminiEnterpriseProjectId,
     geminiEnterpriseLocation,
     geminiEnterpriseToken,
     isStreamEnabled,
+    concurrencyIntervalSec,
     maxLaneCount,
     onRequireSidebarOpen,
     getCurrentSessionId,
@@ -69,6 +94,15 @@ export const useLanes = (options: UseLanesOptions) => {
   const resolvedMaxLaneCount = (() => {
     const n = typeof maxLaneCount === 'number' && Number.isFinite(maxLaneCount) ? Math.floor(maxLaneCount) : 20;
     return Math.max(1, Math.min(999, n));
+  })();
+
+  const concurrencyIntervalMs = (() => {
+    const n =
+      typeof concurrencyIntervalSec === 'number' && Number.isFinite(concurrencyIntervalSec)
+        ? concurrencyIntervalSec
+        : 0;
+    const clamped = Math.max(0, Math.min(60, n));
+    return Math.round(clamped * 1000);
   })();
 
   const [lanes, setLanes] = useState<LaneState[]>(
@@ -89,6 +123,8 @@ export const useLanes = (options: UseLanesOptions) => {
   const [hasStartedChat, setHasStartedChat] = useState(false);
   const [showClearConfirm] = useState(false);
   const abortControllersRef = useRef<Record<string, AbortController>>({});
+  const runIdRef = useRef<string | null>(null);
+  const laneRunStateRef = useRef<Record<string, { runId: string; started: boolean; botMessageId: string }>>({});
 
   const stopRunning = (laneIds?: string[]) => {
     const ids = Array.isArray(laneIds) && laneIds.length > 0 ? laneIds : Object.keys(abortControllersRef.current);
@@ -144,6 +180,57 @@ export const useLanes = (options: UseLanesOptions) => {
   const stopAllRunning = () => {
     stopRunning();
   };
+
+  const getQueuedLaneIds = () => {
+    const runId = runIdRef.current;
+    if (!runId) return [];
+    return Object.keys(laneRunStateRef.current).filter((laneId) => {
+      const state = laneRunStateRef.current[laneId];
+      return state && state.runId === runId && !state.started;
+    });
+  };
+
+  const cancelQueuedLanes = useCallback(() => {
+    const queuedIds = getQueuedLaneIds();
+    if (queuedIds.length === 0) return 0;
+    const queuedSet = new Set(queuedIds);
+    const now = Date.now();
+    const cancelText = '已终止排队';
+
+    queuedIds.forEach((id) => {
+      try {
+        abortControllersRef.current[id]?.abort();
+      } catch {
+        // ignore
+      }
+      delete abortControllersRef.current[id];
+    });
+
+    setLanes((prev) =>
+      prev.map((lane) => {
+        if (!queuedSet.has(lane.id)) return lane;
+        const state = laneRunStateRef.current[lane.id];
+        const botId = state?.botMessageId;
+        if (!botId) {
+          return { ...lane, isThinking: false };
+        }
+        const msgs = [...lane.messages];
+        const idx = msgs.findIndex((m) => m.id === botId);
+        if (idx !== -1) {
+          msgs[idx] = { ...msgs[idx], text: cancelText, timestamp: now };
+        } else {
+          msgs.push({ id: botId, role: Role.MODEL, text: cancelText, timestamp: now });
+        }
+        return { ...lane, isThinking: false, messages: msgs };
+      })
+    );
+
+    queuedIds.forEach((id) => {
+      delete laneRunStateRef.current[id];
+    });
+
+    return queuedIds.length;
+  }, []);
 
   const normalizePresetLanes = (preset?: LaneState[]) =>
     preset?.map((lane) => ({
@@ -313,6 +400,9 @@ export const useLanes = (options: UseLanesOptions) => {
       }
 
       setHasStartedChat(true);
+      const runId = uuidv4();
+      runIdRef.current = runId;
+      laneRunStateRef.current = {};
       const userMessageId = uuidv4();
       const timestamp = Date.now();
 
@@ -365,6 +455,7 @@ export const useLanes = (options: UseLanesOptions) => {
         const laneId = lane.id;
         let botMessageText = '';
         const botMessageId = uuidv4();
+        let wasAborted = false;
         const laneStartTime = Date.now();
         const normalizedModelId = normalizeModelIdValue((lane as any).model);
         const isSoraVideoModel = normalizedModelId.toLowerCase().includes('sora-video');
@@ -372,6 +463,7 @@ export const useLanes = (options: UseLanesOptions) => {
         let isFirstChunk = true;
         const controller = new AbortController();
         abortControllersRef.current[laneId] = controller;
+        laneRunStateRef.current[laneId] = { runId, started: false, botMessageId };
 
         const applyLaneUpdate = (updater: (prev: LaneState) => LaneState) => {
           setLanes((prev) => {
@@ -395,6 +487,16 @@ export const useLanes = (options: UseLanesOptions) => {
         }));
 
         try {
+          if (concurrencyIntervalMs > 0 && laneIndex > 0) {
+            await sleepWithAbort(concurrencyIntervalMs * laneIndex, controller.signal);
+          }
+          if (controller.signal.aborted) {
+            return;
+          }
+          const state = laneRunStateRef.current[laneId];
+          if (state && state.runId === runId) {
+            state.started = true;
+          }
           const modelProvider: ModelProvider = targetProvider;
           const activeApiKey = modelProvider === 'gemini' ? resolveGeminiApiKey(laneIndex) : openaiApiKey;
           const activeApiBaseUrl =
@@ -430,12 +532,16 @@ export const useLanes = (options: UseLanesOptions) => {
 
                 const progress = extractProgressFromText(botMessageText);
                 const errorCode = extractErrorCodeFromText(botMessageText);
+                const hasVideoTag = /<video[^>]*src=['"][^'"]+['"][^>]*>/i.test(botMessageText);
+                const hasVideoUrl = /https?:\/\/[^\s'"]+\.mp4(\?|#|$)/i.test(botMessageText);
+                const videoReady = isSoraVideoModel && (hasVideoTag || hasVideoUrl);
+                const nextProgress = videoReady ? 100 : progress !== null ? progress : l.progress;
 
                 return {
                   ...l,
                   messages: msgs,
-                  isThinking: updatedIsThinking,
-                  progress: progress !== null ? progress : l.progress,
+                  isThinking: videoReady ? false : updatedIsThinking,
+                  progress: nextProgress,
                   errorCode: errorCode !== null ? errorCode : l.errorCode,
                 };
               });
@@ -447,6 +553,7 @@ export const useLanes = (options: UseLanesOptions) => {
             modelProvider,
             controller.signal,
             {
+              geminiImageSettings,
               geminiEnterpriseEnabled,
               geminiEnterpriseProjectId,
               geminiEnterpriseLocation,
@@ -454,6 +561,10 @@ export const useLanes = (options: UseLanesOptions) => {
             }
           );
         } catch (err: any) {
+          if (controller.signal.aborted) {
+            wasAborted = true;
+            return;
+          }
           const message = err?.message ? String(err.message) : String(err);
           const status =
             typeof err?.status === 'number'
@@ -467,6 +578,15 @@ export const useLanes = (options: UseLanesOptions) => {
             errorCode: typeof status === 'number' ? status : l.errorCode,
           }));
         } finally {
+          if (wasAborted || controller.signal.aborted) {
+            applyLaneUpdate((l) => ({ ...l, isThinking: false }));
+            delete abortControllersRef.current[laneId];
+            const state = laneRunStateRef.current[laneId];
+            if (state && state.runId === runId) {
+              delete laneRunStateRef.current[laneId];
+            }
+            return;
+          }
           const finishedAt = Date.now();
           const duration = finishedAt - laneStartTime;
 
@@ -488,10 +608,18 @@ export const useLanes = (options: UseLanesOptions) => {
             return { ...l, isThinking: false, progress: 100, messages: msgs };
           });
           delete abortControllersRef.current[laneId];
+          const state = laneRunStateRef.current[laneId];
+          if (state && state.runId === runId) {
+            delete laneRunStateRef.current[laneId];
+          }
         }
       });
 
       await Promise.all(promises);
+      if (runIdRef.current === runId) {
+        runIdRef.current = null;
+        laneRunStateRef.current = {};
+      }
     },
     [
       lanes,
@@ -511,6 +639,8 @@ export const useLanes = (options: UseLanesOptions) => {
       onBackgroundLaneUpdate,
       openaiApiKey,
       openaiApiUrl,
+      concurrencyIntervalMs,
+      geminiImageSettings,
     ]
   );
 
@@ -529,5 +659,6 @@ export const useLanes = (options: UseLanesOptions) => {
     confirmAndClearChats,
     hasStartedChat,
     setHasStartedChat,
+    cancelQueuedLanes,
   };
 };

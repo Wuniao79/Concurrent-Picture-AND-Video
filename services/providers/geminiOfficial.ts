@@ -1,6 +1,12 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { Message } from '../../types';
-import { buildGeminiOutput, createGeminiContents, extractGeminiTextAndImages, looksLikeImageOutputModel } from './geminiShared';
+import { GeminiImageSettings, Message } from '../../types';
+import {
+  buildGeminiOutput,
+  createGeminiContents,
+  extractGeminiTextAndImages,
+  formatGeminiImageMarkdown,
+  looksLikeImageOutputModel,
+} from './geminiShared';
 import { normalizeGeminiBaseUrl } from './geminiUtils';
 
 type GeminiOfficialOptions = {
@@ -14,6 +20,7 @@ type GeminiOfficialOptions = {
   customBaseUrl?: string;
   timeoutMs: number;
   abortSignal?: AbortSignal;
+  imageSettings?: GeminiImageSettings;
 };
 
 export const generateGeminiOfficialResponse = async ({
@@ -27,10 +34,12 @@ export const generateGeminiOfficialResponse = async ({
   customBaseUrl,
   timeoutMs,
   abortSignal,
+  imageSettings: imageSettingsInput,
 }: GeminiOfficialOptions): Promise<void> => {
   const trimmedKey = (apiKey || '').trim();
   const geminiBaseUrl = normalizeGeminiBaseUrl(customBaseUrl);
   const wantsImageOutput = looksLikeImageOutputModel(model);
+  const imageSettings = imageSettingsInput?.enabled ? imageSettingsInput : undefined;
   const effectiveStream = Boolean(shouldStream && !wantsImageOutput);
 
   const client = new GoogleGenerativeAI(trimmedKey);
@@ -38,9 +47,18 @@ export const generateGeminiOfficialResponse = async ({
 
   const modelParams: any = { model };
   if (wantsImageOutput) {
-    modelParams.generationConfig = {
+    const generationConfig: any = {
       responseModalities: ['TEXT', 'IMAGE'],
     };
+    if (imageSettings) {
+      generationConfig.imageConfig = {
+        imageSize: imageSettings.resolution,
+      };
+      if (imageSettings.aspectRatio && imageSettings.aspectRatio !== 'auto') {
+        generationConfig.imageConfig.aspectRatio = imageSettings.aspectRatio;
+      }
+    }
+    modelParams.generationConfig = generationConfig;
   }
 
   const modelClient = client.getGenerativeModel(
@@ -83,7 +101,7 @@ export const generateGeminiOfficialResponse = async ({
       const finalResponse = await stream.response;
       const { images } = extractGeminiTextAndImages(finalResponse);
       if (images.length > 0) {
-        const imageMarkdown = images.map((u) => `![](${u})`).join('\n\n');
+        const imageMarkdown = images.map((img) => formatGeminiImageMarkdown(img)).join('\n\n');
         onChunk((deliveredAny ? '\n\n' : '') + imageMarkdown);
         deliveredAny = true;
       }
@@ -113,4 +131,3 @@ export const generateGeminiOfficialResponse = async ({
     throw new Error(`Gemini 请求失败：${message}`);
   }
 };
-

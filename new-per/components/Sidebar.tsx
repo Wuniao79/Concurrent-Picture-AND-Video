@@ -4,14 +4,6 @@ import { ChatColumn } from './ChatColumn';
 import { LaneState, Model, Language } from '../types';
 import { LaneHistoryItem } from '../utils/history';
 
-const normalizeModelIdValue = (value: unknown): string => {
-  if (typeof value === 'string') return value;
-  if (value && typeof value === 'object' && 'id' in value && typeof (value as any).id !== 'undefined') {
-    return String((value as any).id);
-  }
-  return String(value ?? '');
-};
-
 interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
@@ -21,8 +13,6 @@ interface SidebarProps {
   language: Language;
   fontSize: number;
   availableModels: Model[];
-  downloadProxyUrl?: string;
-  cacheHistoryId?: string | null;
   onStartNewChat: () => void;
   onRemoveLane: (id: string) => void;
   onModelChange: (id: string, model: string) => void;
@@ -44,8 +34,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   language,
   fontSize,
   availableModels,
-  downloadProxyUrl,
-  cacheHistoryId,
   onStartNewChat,
   onRemoveLane,
   onModelChange,
@@ -82,8 +70,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const filteredHistory = useMemo(() => {
     if (!normalizedSearch) return historyList;
     return historyList.filter((item) => {
-      const name = String(item.name || '').toLowerCase();
-      const model = normalizeModelIdValue((item as any).model).toLowerCase();
+      const name = item.name.toLowerCase();
+      const model = item.model.toLowerCase();
       return name.includes(normalizedSearch) || model.includes(normalizedSearch);
     });
   }, [historyList, normalizedSearch]);
@@ -96,15 +84,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const HistoryRow = (item: LaneHistoryItem) => {
     const isActive = item.id === activeHistoryId;
     const isMenuOpen = menuOpenId === item.id;
-    const itemModelId = normalizeModelIdValue((item as any).model);
     const laneModelIds = Array.from(
-      new Set((item.lanes ?? []).map((l) => normalizeModelIdValue((l as any).model)).filter(Boolean))
+      new Set((item.lanes ?? []).map((l) => l.model).filter(Boolean))
     );
     const resolvedModel =
       laneModelIds.length <= 1
-        ? (availableModels.find((m) => m.id === (laneModelIds[0] || itemModelId))?.name ||
+        ? (availableModels.find((m) => m.id === (laneModelIds[0] || item.model))?.name ||
             laneModelIds[0] ||
-            itemModelId)
+            item.model)
         : language === 'zh'
         ? `多模型(${laneModelIds.length})`
         : `Mixed (${laneModelIds.length})`;
@@ -213,7 +200,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <div
       className={`
-        app-sidebar fixed inset-y-0 left-0 z-30 
+        fixed inset-y-0 left-0 z-30 
         ${isGridMode ? 'w-[340px]' : 'w-[260px]'} 
         bg-[#f9fafb] dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 
         transform transition-all duration-300 ease-in-out
@@ -225,7 +212,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {showNewChatHeader ? (
           <>
             <button
-              onClick={() => onStartNewChat()}
+              onClick={onStartNewChat}
               className="flex-1 flex items-center gap-2 px-3 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 hover:border-gray-300 transition-all text-sm font-medium text-gray-700 dark:text-gray-200 shadow-sm group"
             >
               <Plus
@@ -243,21 +230,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="flex items-center gap-2 overflow-hidden">
               <div
                 className={`w-2 h-2 rounded-full ${
-                  (typeof activeLane?.errorCode === 'number' && activeLane.errorCode >= 400) || activeLane?.error
-                    ? 'bg-red-500'
-                    : (typeof activeLane?.progress === 'number' && activeLane.progress < 100) || activeLane?.isThinking
-                    ? 'bg-yellow-400 animate-pulse'
-                    : 'bg-green-500'
+                  activeLane?.isThinking ? 'bg-yellow-400 animate-pulse' : 'bg-green-500'
                 }`}
               />
               <div className="font-medium text-sm truncate text-gray-700 dark:text-gray-200 max-w-[200px]">
                 {activeLane ? activeLane.name : 'Select a Model'}
               </div>
-              {typeof activeLane?.errorCode === 'number' && activeLane.errorCode >= 400 && (
-                <div className="text-[11px] font-semibold text-red-500 dark:text-red-400 whitespace-nowrap">
-                  [{activeLane.errorCode}]
-                </div>
-              )}
             </div>
             <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
               <PanelLeftClose size={20} />
@@ -329,19 +307,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </>
       ) : isGridMode && activeLane ? (
-          <div className="flex-1 overflow-hidden relative flex flex-col">
-            <ChatColumn
-              lane={activeLane}
-              onRemove={onRemoveLane}
-              onModelChange={onModelChange}
-              isMultiLane={false}
-              downloadProxyUrl={downloadProxyUrl}
-              cacheHistoryId={cacheHistoryId}
-              cacheLaneId={activeLane?.id || null}
-              fontSize={fontSize - 1}
-              availableModels={availableModels}
-            />
-          </div>
+        <div className="flex-1 overflow-hidden relative flex flex-col">
+          <ChatColumn
+            lane={activeLane}
+            onRemove={onRemoveLane}
+            onModelChange={onModelChange}
+            isMultiLane={false}
+            fontSize={fontSize - 1}
+            availableModels={availableModels}
+          />
+        </div>
       ) : (
         <div className="flex-1 flex items-center justify-center text-gray-400 text-sm p-4 text-center">
           <p>{language === 'zh' ? '选择模型查看对话' : 'Select a model to view chat here.'}</p>

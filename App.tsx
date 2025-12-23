@@ -7,13 +7,20 @@ import { SettingsModal } from './components/SettingsModal';
 import { Sidebar } from './components/Sidebar';
 import { EmptyState } from './components/EmptyState';
 import { TopBar } from './components/TopBar';
+import { PromptLibraryModal } from './components/tools/PromptLibraryModal';
+import { ImageSlicerModal } from './components/tools/ImageSlicerModal';
+import { VideoFrameModal } from './components/tools/VideoFrameModal';
+import { XhsLabModal } from './components/tools/XhsLabModal';
+import { GeminiImagePanel } from './components/GeminiImagePanel';
 import { useSettings } from './hooks/useSettings';
 import { useLanes } from './hooks/useLanes';
 import { LaneHistoryItem } from './utils/history';
 import { loadHistory, saveHistory, loadCounter, saveCounter, loadActiveHistoryId, saveActiveHistoryId } from './utils/history';
-import { LaneState, Message, ModelModality, Role } from './types';
+import { LaneState, Message, ModelModality, Role, ToolView } from './types';
 import { createDefaultLane } from './utils/lane';
 import { safeStorageGet, safeStorageSet } from './utils/storage';
+import { fetchBlobWithProxy } from './utils/download';
+import { buildImageCacheId, clearImageCache, deleteImageCacheByHistoryId, getImageCacheRecord, putImageCacheRecord } from './utils/imageCache';
 import {
   loadDownloadDirectoryHandle,
   saveDownloadDirectoryHandle,
@@ -50,7 +57,11 @@ const App: React.FC = () => {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [laneLocked, setLaneLocked] = useState(() => safeStorageGet('sora_lane_locked') === '1');
   const [isFullView, setIsFullView] = useState(false);
+  const [queueStartAt, setQueueStartAt] = useState<number | null>(null);
+  const [isInputCollapsed, setIsInputCollapsed] = useState(false);
   const [modelModalityFilter, setModelModalityFilter] = useState<ModelModality | null>(null);
+  const [activeTool, setActiveTool] = useState<ToolView | null>(null);
+  const [isGeminiPanelOpen, setIsGeminiPanelOpen] = useState(false);
   const lastHistorySyncAtRef = useRef<number>(0);
   const backgroundHistorySyncAtRef = useRef<Record<string, number>>({});
   const historySyncKeyRef = useRef<Record<string, string>>({});
@@ -88,6 +99,7 @@ const App: React.FC = () => {
     };
   }, []);
 
+
   const showBulkDownloadMessage = useCallback(
     (text: string, tone: 'neutral' | 'success' | 'error' = 'neutral', durationMs = 3200) => {
       if (bulkDownloadMessageTimerRef.current !== null) {
@@ -116,6 +128,10 @@ const App: React.FC = () => {
     setLanguage,
     fontSize,
     setFontSize,
+    downloadProxyUrl,
+    setDownloadProxyUrl,
+    concurrencyIntervalSec,
+    setConcurrencyIntervalSec,
     isStreamEnabled,
     setIsStreamEnabled,
     apiMode,
@@ -174,6 +190,8 @@ const App: React.FC = () => {
     setGeminiKeyPoolEnabled,
     geminiKeyRotationEnabled,
     setGeminiKeyRotationEnabled,
+    geminiImageSettings,
+    setGeminiImageSettings,
   } = useSettings({ defaultApiKey, defaultApiUrl });
 
   const enabledRelays = relayEnabled ? relays.filter((r) => r.enabled) : [];
@@ -233,13 +251,21 @@ const App: React.FC = () => {
         );
 
       const laneHasModelMessage = (lane: LaneState) => (lane.messages || []).some((m) => m.role === Role.MODEL);
+      const laneHasVideoResult = (lane: LaneState) =>
+        (lane.messages || []).some((m) => {
+          if (m.role !== Role.MODEL || typeof m.text !== 'string') return false;
+          const text = m.text;
+          if (/<video[^>]*src=['"][^'"]+['"][^>]*>/i.test(text)) return true;
+          return /https?:\/\/[^\s'"]+\.mp4(\?|#|$)/i.test(text);
+        });
 
       const isVideoInFlight = (lane: LaneState) => {
         if (resolveModelModalityById(lane.model) !== 'video') return false;
         if (lane.error) return false;
-        if (lane.errorCode === 400 || lane.errorCode === 401 || lane.errorCode === 500) return false;
+        if (typeof lane.errorCode === 'number' && lane.errorCode >= 400) return false;
         if (!laneHasUserPrompt(lane)) return false;
         if (!laneHasModelMessage(lane)) return false;
+        if (laneHasVideoResult(lane)) return false;
         if (typeof lane.progress !== 'number') return true;
         return lane.progress >= 0 && lane.progress < 100;
       };
@@ -248,7 +274,6 @@ const App: React.FC = () => {
     },
     [resolveModelModalityById]
   );
-
   const onBackgroundLaneUpdate = useCallback(
     (sessionId: string, laneId: string, updater: (prev: LaneState) => LaneState) => {
       const now = Date.now();
@@ -397,6 +422,7 @@ const App: React.FC = () => {
     confirmAndClearChats,
     hasStartedChat,
     setHasStartedChat,
+    cancelQueuedLanes,
   } = useLanes({
     selectedModelId,
     availableModels,
@@ -407,11 +433,13 @@ const App: React.FC = () => {
     geminiApiUrl: effectiveGeminiUrl,
     geminiKeyRotationEnabled,
     geminiKeyPool: geminiKeyPoolEnabled ? enabledGeminiKeys : [],
+    geminiImageSettings,
     geminiEnterpriseEnabled: effectiveGeminiEnterpriseEnabled,
     geminiEnterpriseProjectId,
     geminiEnterpriseLocation,
     geminiEnterpriseToken,
     isStreamEnabled,
+    concurrencyIntervalSec,
     maxLaneCount: laneCountLimit,
     onRequireSidebarOpen: () => setIsSidebarOpen(true),
     getCurrentSessionId,
@@ -421,15 +449,46 @@ const App: React.FC = () => {
     initialLaneCount: savedSession?.laneCount,
   });
 
+  const isGenerating = useMemo(() => computeIsGeneratingFromLanes(lanes), [computeIsGeneratingFromLanes, lanes]);
+  useEffect(() => {
+    if (!isGenerating && queueStartAt) {
+      setQueueStartAt(null);
+    }
+  }, [isGenerating, queueStartAt]);
+
   const displayLanes = isViewingHistory && viewingLanes ? viewingLanes : lanes;
   const displayActiveLaneId = isViewingHistory ? viewingActiveLaneId : activeLaneId;
+  const cacheHistoryId = isViewingHistory ? activeHistoryId : pendingHistoryId;
   const displayHasStartedChat = isViewingHistory
     ? displayLanes.length > 0
     : hasStartedChat || hasEnteredSession;
   const isGridMode = !isFullView && displayLanes.length > 3;
+  const showLanePreviewToggle = displayLanes.length > 1 && displayLanes.length <= 3;
   const activeLane = displayLanes.find((l) => l.id === displayActiveLaneId);
   const fullViewLane = activeLane || displayLanes[0];
   const canEditDisplay = !isViewingHistory;
+  const laneNavItems = useMemo(
+    () =>
+      displayLanes.slice(0, 20).map((lane, idx) => {
+        const hasError =
+          (typeof lane.errorCode === 'number' && lane.errorCode >= 400) || Boolean(lane.error);
+        const isRunning =
+          lane.isThinking ||
+          (typeof lane.progress === 'number' && lane.progress >= 0 && lane.progress < 100);
+        const hasModelOutput = (lane.messages || []).some(
+          (m) => m.role === Role.MODEL && Boolean((m.text || '').trim())
+        );
+        const status = hasError ? 'error' : isRunning ? 'running' : hasModelOutput ? 'done' : 'idle';
+        return {
+          id: lane.id,
+          label: String(idx + 1),
+          isActive: lane.id === displayActiveLaneId,
+          status,
+        };
+      }),
+    [displayLanes, displayActiveLaneId]
+  );
+  const wasGeneratingRef = useRef(false);
   const setDisplayActiveLaneId = (id: string | null) => {
     if (isViewingHistory) {
       setViewingActiveLaneId(id);
@@ -437,6 +496,24 @@ const App: React.FC = () => {
       setActiveLaneId(id);
     }
   };
+  const handleLanePreviewToggle = useCallback(
+    (laneId: string) => {
+      if (!laneId) return;
+      if (isFullView) {
+        if (fullViewLane && fullViewLane.id === laneId) {
+          setIsFullView(false);
+          return;
+        }
+        setDisplayActiveLaneId(laneId);
+        return;
+      }
+      setDisplayActiveLaneId(laneId);
+      setIsSidebarOpen(false);
+      setIsHistoryPanelOpen(false);
+      setIsFullView(true);
+    },
+    [fullViewLane, isFullView, setDisplayActiveLaneId, setIsHistoryPanelOpen, setIsSidebarOpen]
+  );
   const todayConcurrencyCount = useMemo(() => {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
@@ -474,6 +551,21 @@ const App: React.FC = () => {
       ? '视频模型默认仅支持一次性对话；如有特殊需要可前往“开发者选项 → 视频模型突破对话限制”（可能会引发 bug）'
       : 'Video models are one-shot by default. Enable “Developer options → Video model chat limit override” to continue (may be unstable).'
     : undefined;
+
+  useEffect(() => {
+    if (!isVideoSession) {
+      wasGeneratingRef.current = false;
+      return;
+    }
+    if (isGenerating) {
+      wasGeneratingRef.current = true;
+      return;
+    }
+    if (wasGeneratingRef.current && hasStartedChat) {
+      setIsInputCollapsed(true);
+    }
+    wasGeneratingRef.current = false;
+  }, [isGenerating, isVideoSession, hasStartedChat]);
 
   // If history UI entry is unavailable, force-close history panel and exit viewing mode.
   useEffect(() => {
@@ -703,8 +795,10 @@ const App: React.FC = () => {
   const extractImageDataUrlsFromText = (text: string) => {
     if (!text) return [];
     const results = new Set<string>();
-    const markdownRegex = /!\[[^\]]*]\((data:image\/[a-zA-Z0-9.+-]+;base64,[^)]+)\)/g;
+    const markdownRegex = /!\[[^\]]*]\((\S+?)(?:\s+["'][^"']*["'])?\)/g;
     const dataUrlRegex = /data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+/g;
+    const httpRegex = /https?:\/\/[^\s)]+/g;
+    const imageExtRegex = /\.(png|jpe?g|webp|gif|bmp|svg|avif)(?:$|[?#])/i;
     let match: RegExpExecArray | null;
 
     while ((match = markdownRegex.exec(text)) !== null) {
@@ -713,40 +807,55 @@ const App: React.FC = () => {
     while ((match = dataUrlRegex.exec(text)) !== null) {
       if (match[0]) results.add(match[0]);
     }
+    while ((match = httpRegex.exec(text)) !== null) {
+      if (match[0] && imageExtRegex.test(match[0])) results.add(match[0]);
+    }
 
     return Array.from(results);
   };
 
   const extractImageDataUrlsFromMessage = (msg: Message) => {
     if (!msg) return [];
-    const results = new Set<string>();
-    extractImageDataUrlsFromText(msg.text || '').forEach((url) => results.add(url));
+    const results: string[] = [];
+    const pushUnique = (url?: string) => {
+      if (!url) return;
+      if (!results.includes(url)) results.push(url);
+    };
     if (Array.isArray(msg.images)) {
-      msg.images.filter(Boolean).forEach((url) => results.add(url));
+      msg.images.filter(Boolean).forEach((url) => pushUnique(url));
     }
-    if (msg.image) results.add(msg.image);
-    return Array.from(results);
+    if (msg.image) pushUnique(msg.image);
+    extractImageDataUrlsFromText(msg.text || '').forEach((url) => pushUnique(url));
+    return results;
   };
 
   const collectGeneratedLaneImages = (ls: LaneState[]) =>
     ls
       .map((lane, laneIndex) => {
-        const results = new Set<string>();
+        const results = new Map<
+          string,
+          { url: string; cacheId?: string; messageId?: string; imageIndex?: number }
+        >();
         for (const msg of lane.messages || []) {
           if (msg.role !== Role.MODEL) continue;
           const urls = extractImageDataUrlsFromMessage(msg);
-          urls.forEach((url) => results.add(url));
+          urls.forEach((url, idx) => {
+            if (results.has(url)) return;
+            const cacheId =
+              cacheHistoryId && msg.id ? buildImageCacheId(cacheHistoryId, lane.id, msg.id, idx) : undefined;
+            results.set(url, { url, cacheId, messageId: msg.id, imageIndex: idx });
+          });
         }
-        return { laneIndex, dataUrls: Array.from(results) };
+        return { laneIndex, laneId: lane.id, items: Array.from(results.values()) };
       })
-      .filter((item) => item.dataUrls.length > 0);
+      .filter((item) => item.items.length > 0);
 
   const laneImageDownloads = useMemo(
     () => collectGeneratedLaneImages(displayLanes),
-    [displayLanes]
+    [displayLanes, cacheHistoryId]
   );
   const totalDownloadImages = useMemo(
-    () => laneImageDownloads.reduce((acc, item) => acc + item.dataUrls.length, 0),
+    () => laneImageDownloads.reduce((acc, item) => acc + item.items.length, 0),
     [laneImageDownloads]
   );
   const showBulkDownload = useMemo(
@@ -754,6 +863,7 @@ const App: React.FC = () => {
     [displayLanes, resolveModelModalityById]
   );
   const bulkDownloadDisabled = totalDownloadImages === 0 || bulkDownloadLoading;
+  const showStopQueue = Boolean(isGenerating && concurrencyIntervalSec >= 10 && lanes.length > 1);
 
   const sanitizeDownloadName = (value: string, fallback: string) => {
     const cleaned = String(value || '')
@@ -772,18 +882,36 @@ const App: React.FC = () => {
     return sanitizeDownloadName(rawName || fallbackName, 'concurrent-download');
   }, [activeHistoryId, pendingHistoryId, historyList, isViewingHistory, displayLanes.length]);
 
-  const resolveImageExtension = (dataUrl: string) => {
-    const match = /^data:image\/([^;]+);base64,/i.exec(dataUrl || '');
-    const ext = match ? match[1].toLowerCase() : 'png';
-    if (ext === 'jpeg') return 'jpg';
-    if (ext.includes('+xml')) return 'svg';
-    return ext || 'png';
+  const resolveImageExtension = (src: string, mimeType?: string) => {
+    if (mimeType) {
+      const cleaned = mimeType.toLowerCase().split(';')[0];
+      if (cleaned.startsWith('image/')) {
+        const ext = cleaned.replace('image/', '');
+        if (ext === 'jpeg') return 'jpg';
+        if (ext.includes('+xml')) return 'svg';
+        if (ext) return ext;
+      }
+    }
+    if (!src) return 'png';
+    if (src.startsWith('data:image/')) {
+      const match = /^data:image\/([^;]+);/i.exec(src);
+      const ext = match ? match[1].toLowerCase() : 'png';
+      if (ext === 'jpeg') return 'jpg';
+      if (ext.includes('+xml')) return 'svg';
+      return ext || 'png';
+    }
+    const cleaned = src.split('?')[0].split('#')[0];
+    const lastDot = cleaned.lastIndexOf('.');
+    if (lastDot !== -1) {
+      const ext = cleaned.slice(lastDot + 1).toLowerCase();
+      if (ext === 'jpeg') return 'jpg';
+      if (ext.includes('+xml')) return 'svg';
+      if (ext) return ext;
+    }
+    return 'png';
   };
 
-  const dataUrlToBlob = async (dataUrl: string) => {
-    const response = await fetch(dataUrl);
-    return response.blob();
-  };
+  const dataUrlToBlob = async (url: string) => fetchBlobWithProxy(url, downloadProxyUrl);
 
   const downloadDirectorySupported =
     typeof window !== 'undefined' && typeof (window as any).showDirectoryPicker === 'function';
@@ -867,29 +995,69 @@ const App: React.FC = () => {
     }
     const folderName = resolveBulkDownloadFolderName();
 
+    let failedCount = 0;
     try {
       const folderHandle = await rootHandle.getDirectoryHandle(folderName, { create: true });
       for (const bundle of laneImageDownloads) {
         const baseName = `Model-${bundle.laneIndex + 1}`;
-        for (let idx = 0; idx < bundle.dataUrls.length; idx += 1) {
-          const dataUrl = bundle.dataUrls[idx];
-          const ext = resolveImageExtension(dataUrl);
-          const suffix = bundle.dataUrls.length > 1 ? `-${String(idx + 1).padStart(2, '0')}` : '';
-          const fileName = `${baseName}${suffix}.${ext}`;
-          const fileHandle = await folderHandle.getFileHandle(fileName, { create: true });
-          const writable = await fileHandle.createWritable();
-          const blob = await dataUrlToBlob(dataUrl);
-          await writable.write(blob);
-          await writable.close();
+        for (let idx = 0; idx < bundle.items.length; idx += 1) {
+          const item = bundle.items[idx];
+          const dataUrl = item.url;
+          const cacheId = item.cacheId;
+          const messageId = item.messageId || '';
+          const imageIndex = typeof item.imageIndex === 'number' ? item.imageIndex : idx;
+          try {
+            let blob: Blob | null = null;
+            if (cacheId) {
+              const cached = await getImageCacheRecord(cacheId);
+              if (cached?.blob) {
+                blob = cached.blob;
+              }
+            }
+            if (!blob) {
+              blob = await dataUrlToBlob(dataUrl);
+              if (cacheId && cacheHistoryId) {
+                await putImageCacheRecord({
+                  id: cacheId,
+                  historyId: cacheHistoryId,
+                  laneId: bundle.laneId || '',
+                  messageId,
+                  imageIndex,
+                  source: dataUrl,
+                  createdAt: Date.now(),
+                  mimeType: blob.type || '',
+                  blob,
+                });
+              }
+            }
+            const ext = resolveImageExtension(dataUrl, blob.type);
+            const suffix = bundle.items.length > 1 ? `-${String(idx + 1).padStart(2, '0')}` : '';
+            const fileName = `${baseName}${suffix}.${ext}`;
+            const fileHandle = await folderHandle.getFileHandle(fileName, { create: true });
+            const writable = await fileHandle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+          } catch {
+            failedCount += 1;
+          }
         }
       }
       setBulkDownloadLoading(false);
       const rootName = rootHandle.name || (language === 'zh' ? '下载目录' : 'downloads');
       const savedPath = `${rootName}/${folderName}`;
-      showBulkDownloadMessage(
-        language === 'zh' ? `已保存到：${savedPath}` : `Saved to: ${savedPath}`,
-        'success'
-      );
+      if (failedCount > 0) {
+        showBulkDownloadMessage(
+          language === 'zh'
+            ? `已保存到：${savedPath}（失败 ${failedCount} 张，可能跨域限制）`
+            : `Saved to: ${savedPath} (${failedCount} failed, likely CORS)`,
+          'error'
+        );
+      } else {
+        showBulkDownloadMessage(
+          language === 'zh' ? `已保存到：${savedPath}` : `Saved to: ${savedPath}`,
+          'success'
+        );
+      }
     } catch (err) {
       setBulkDownloadLoading(false);
       const errorName = (err as { name?: string })?.name;
@@ -910,6 +1078,8 @@ const App: React.FC = () => {
     laneImageDownloads,
     language,
     showBulkDownloadMessage,
+    downloadProxyUrl,
+    cacheHistoryId,
   ]);
 
   const ensurePendingHistoryId = useCallback(() => {
@@ -937,10 +1107,17 @@ const App: React.FC = () => {
   const handleSendFromUI = useCallback(
     (text: string, images: string[] = []) => {
       ensurePendingHistoryId();
+      setQueueStartAt(Date.now());
       return handleSend(text, images);
     },
     [ensurePendingHistoryId, handleSend]
   );
+
+  const handleOpenTool = useCallback((tool: ToolView) => {
+    setActiveTool(tool);
+    setIsSidebarOpen(false);
+    setIsHistoryPanelOpen(false);
+  }, []);
 
   const resolveAutoHistoryName = (currentName: string, sequenceNumber: number, laneCount: number) => {
     if ((currentName || '').startsWith('等待并发中')) {
@@ -1223,14 +1400,6 @@ const App: React.FC = () => {
   const handleToggleHistory = () => {
     if (isHistoryPanelOpen) {
       setIsHistoryPanelOpen(false);
-      if (isViewingHistory) {
-        setIsViewingHistory(false);
-        setViewingLanes(null);
-        setViewingActiveLaneId(null);
-        if (pendingHistoryId) {
-          persistHistory(historyList, undefined, pendingHistoryId);
-        }
-      }
       return;
     }
     setIsHistoryPanelOpen(true);
@@ -1342,17 +1511,19 @@ const App: React.FC = () => {
       setPendingHistoryId(null);
       pendingHistoryIdRef.current = null;
     }
+    void deleteImageCacheByHistoryId(id);
   };
 
   const clearHistory = () => {
     persistHistory([], 0, null);
     setPendingHistoryId(null);
     pendingHistoryIdRef.current = null;
+    void clearImageCache();
   };
 
   return (
     <>
-    <div className="flex h-screen bg-white dark:bg-gray-900 overflow-hidden font-sans text-gray-900 dark:text-gray-100 transition-colors duration-200">
+    <div className="app-shell flex h-screen bg-white dark:bg-gray-900 overflow-hidden font-sans text-gray-900 dark:text-gray-100 transition-colors duration-200">
 
       <SettingsModal
         isOpen={isSettingsOpen}
@@ -1363,6 +1534,10 @@ const App: React.FC = () => {
         setLanguage={setLanguage}
         fontSize={fontSize}
         setFontSize={setFontSize}
+        downloadProxyUrl={downloadProxyUrl}
+        setDownloadProxyUrl={setDownloadProxyUrl}
+        concurrencyIntervalSec={concurrencyIntervalSec}
+        setConcurrencyIntervalSec={setConcurrencyIntervalSec}
         isStreamEnabled={isStreamEnabled}
         setIsStreamEnabled={setIsStreamEnabled}
         apiMode={apiMode}
@@ -1434,6 +1609,8 @@ const App: React.FC = () => {
         language={language}
         fontSize={fontSize}
         availableModels={visibleModels}
+        downloadProxyUrl={downloadProxyUrl}
+        cacheHistoryId={cacheHistoryId}
         onStartNewChat={handleStartNewChat}
         onRemoveLane={removeLane}
         onModelChange={updateModel}
@@ -1447,7 +1624,7 @@ const App: React.FC = () => {
       />
 
       <div
-        className={`flex-1 flex flex-col h-full transition-all duration-300 ${
+        className={`app-shell flex-1 flex flex-col h-full transition-all duration-300 ${
           isSidebarOpen ? (isGridMode ? 'md:ml-[340px]' : 'md:ml-[260px]') : ''
         } relative bg-white dark:bg-gray-900`}
       >
@@ -1491,28 +1668,49 @@ const App: React.FC = () => {
           }}
         />
 
-        <main className="flex-1 overflow-hidden relative flex flex-col bg-white dark:bg-gray-900">
+        <main className="app-shell flex-1 overflow-hidden relative flex flex-col bg-white dark:bg-gray-900">
+          {apiMode === 'gemini' && (
+            <GeminiImagePanel
+              language={language}
+              isOpen={isGeminiPanelOpen}
+              onToggle={() => setIsGeminiPanelOpen((v) => !v)}
+              settings={geminiImageSettings}
+              onChange={setGeminiImageSettings}
+            />
+          )}
           {!displayHasStartedChat ? (
             <>
-            <EmptyState language={language} onSendQuickPrompt={(text) => handleSendFromUI(text, [])} />
-	              <div className="p-4 pb-6 bg-white dark:bg-gray-900 z-20">
-	                <ChatInput
+            <EmptyState language={language} onOpenTool={handleOpenTool} />
+	              <div
+                  className={`app-input-panel z-20 ${
+                    isInputCollapsed ? 'px-4 py-2 bg-transparent border-transparent' : 'p-4 pb-6 bg-white dark:bg-gray-900'
+                  }`}
+                >
+                  <ChatInput
 	                  onSend={handleSendFromUI}
 	                  language={language}
-	                  isGenerating={computeIsGeneratingFromLanes(lanes)}
+	                  isGenerating={isGenerating}
 	                  inputDisabled={chatInputDisabled}
 	                  inputDisabledHint={chatInputDisabledHint}
-	                  onOpenSettings={() => setIsSettingsOpen(true)}
+                    onOpenTool={handleOpenTool}
 	                  laneCountInput={laneCountInput}
 	                  updateLaneCount={handleLaneCountChange}
 	                  laneLocked={laneLocked}
 	                  onToggleLaneLock={() => setLaneLocked((v) => !v)}
+                    isCollapsed={isInputCollapsed}
+                    onCollapseChange={setIsInputCollapsed}
+                    isFullView={isFullView}
+                    laneNavItems={laneNavItems}
+                    onSelectLane={(id) => setDisplayActiveLaneId(id)}
+                    isMultiLaneLayout={lanes.length > 1}
                     showBulkDownload={showBulkDownload}
                     bulkDownloadDisabled={bulkDownloadDisabled}
                     bulkDownloadLoading={bulkDownloadLoading}
                     bulkDownloadMessage={bulkDownloadMessage || undefined}
                     bulkDownloadMessageTone={bulkDownloadMessageTone}
                     onBulkDownload={handleBulkDownloadImages}
+                    showStopQueue={showStopQueue}
+                    onStopQueue={() => cancelQueuedLanes()}
 	                  showRelaySelect={showRelaySelect}
 	                  relays={enabledRelays}
 	                  activeRelayId={activeRelayId}
@@ -1548,6 +1746,12 @@ const App: React.FC = () => {
                       isMultiLane={false}
                       fullWidth
                       isFullView
+                      showPreviewToggle={showLanePreviewToggle}
+                      isPreviewActive={isFullView}
+                      onTogglePreview={() => handleLanePreviewToggle(fullViewLane.id)}
+                      downloadProxyUrl={downloadProxyUrl}
+                      cacheHistoryId={cacheHistoryId}
+                      cacheLaneId={fullViewLane.id}
                       fontSize={fontSize}
                       availableModels={visibleModels}
                     />
@@ -1555,10 +1759,14 @@ const App: React.FC = () => {
                 ) : isGridMode ? (
                   <div className="h-full p-6 overflow-y-auto">
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4">
-                      {displayLanes.map((lane) => (
+                      {displayLanes.map((lane, laneIndex) => (
                         <ChatGridItem
                           key={lane.id}
                           lane={lane}
+                          laneIndex={laneIndex}
+                          concurrencyIntervalSec={concurrencyIntervalSec}
+                          queueStartAt={queueStartAt}
+                          language={language}
                           isActive={displayActiveLaneId === lane.id}
                           onClick={() => {
                             setDisplayActiveLaneId(lane.id);
@@ -1585,6 +1793,7 @@ const App: React.FC = () => {
                             ? 'w-full md:w-1/2'
                             : 'w-full md:w-1/2 lg:w-1/3'
                         }`}
+                        onClick={() => setDisplayActiveLaneId(lane.id)}
                       >
                         <ChatColumn
                           lane={lane}
@@ -1592,6 +1801,12 @@ const App: React.FC = () => {
                           onModelChange={canEditDisplay ? updateModel : () => {}}
                           isMultiLane={displayLanes.length > 1}
                           fontSize={fontSize}
+                          showPreviewToggle={showLanePreviewToggle}
+                          isPreviewActive={isFullView && fullViewLane?.id === lane.id}
+                          onTogglePreview={() => handleLanePreviewToggle(lane.id)}
+                          downloadProxyUrl={downloadProxyUrl}
+                          cacheHistoryId={cacheHistoryId}
+                          cacheLaneId={lane.id}
                           availableModels={visibleModels}
                         />
                       </div>
@@ -1601,28 +1816,36 @@ const App: React.FC = () => {
               </div>
 
               <div
-                className={`p-4 pb-6 bg-white dark:bg-gray-900 z-20 ${
-                  isFullView ? '' : 'border-t border-gray-100 dark:border-gray-800'
-                }`}
+                className={`app-input-panel z-20 ${
+                  isInputCollapsed ? 'px-4 py-2 bg-transparent border-transparent' : 'p-4 pb-6 bg-white dark:bg-gray-900'
+                } ${isFullView ? '' : 'border-t border-gray-100 dark:border-gray-800'}`}
 	              >
-	                <ChatInput
-	                  onSend={handleSendFromUI}
-	                  language={language}
-	                  isGenerating={computeIsGeneratingFromLanes(lanes)}
-	                  inputDisabled={chatInputDisabled}
-	                  inputDisabledHint={chatInputDisabledHint}
-	                  onOpenSettings={() => setIsSettingsOpen(true)}
-	                  laneCountInput={laneCountInput}
-	                  updateLaneCount={handleLaneCountChange}
-	                  laneLocked={laneLocked}
-	                  onToggleLaneLock={() => setLaneLocked((v) => !v)}
-                    showBulkDownload={showBulkDownload}
-                    bulkDownloadDisabled={bulkDownloadDisabled}
-                    bulkDownloadLoading={bulkDownloadLoading}
-                    bulkDownloadMessage={bulkDownloadMessage || undefined}
-                    bulkDownloadMessageTone={bulkDownloadMessageTone}
-                    onBulkDownload={handleBulkDownloadImages}
-	                  showRelaySelect={showRelaySelect}
+                <ChatInput
+	                onSend={handleSendFromUI}
+	                language={language}
+	                isGenerating={isGenerating}
+	                inputDisabled={chatInputDisabled}
+	                inputDisabledHint={chatInputDisabledHint}
+                  onOpenTool={handleOpenTool}
+	                laneCountInput={laneCountInput}
+	                updateLaneCount={handleLaneCountChange}
+	                laneLocked={laneLocked}
+	                onToggleLaneLock={() => setLaneLocked((v) => !v)}
+                  isCollapsed={isInputCollapsed}
+                  onCollapseChange={setIsInputCollapsed}
+                  isFullView={isFullView}
+                  laneNavItems={laneNavItems}
+                  onSelectLane={(id) => setDisplayActiveLaneId(id)}
+                  isMultiLaneLayout={displayLanes.length > 1}
+                  showBulkDownload={showBulkDownload}
+                  bulkDownloadDisabled={bulkDownloadDisabled}
+                  bulkDownloadLoading={bulkDownloadLoading}
+                  bulkDownloadMessage={bulkDownloadMessage || undefined}
+                  bulkDownloadMessageTone={bulkDownloadMessageTone}
+                  onBulkDownload={handleBulkDownloadImages}
+                  showStopQueue={showStopQueue}
+                  onStopQueue={() => cancelQueuedLanes()}
+                  showRelaySelect={showRelaySelect}
 	                  relays={enabledRelays}
 	                  activeRelayId={activeRelayId}
 	                  onSelectRelay={(id) => {
@@ -1649,6 +1872,39 @@ const App: React.FC = () => {
         </main>
       </div>
     </div>
+    <PromptLibraryModal
+      isOpen={activeTool === 'promptLibrary'}
+      language={language}
+      onClose={() => setActiveTool(null)}
+    />
+    <ImageSlicerModal
+      isOpen={activeTool === 'slicer'}
+      language={language}
+      onClose={() => setActiveTool(null)}
+    />
+    <VideoFrameModal
+      isOpen={activeTool === 'videoFrames'}
+      language={language}
+      onClose={() => setActiveTool(null)}
+    />
+    <XhsLabModal
+      isOpen={activeTool === 'xhs'}
+      language={language}
+      apiMode={apiMode}
+      availableModels={availableModels}
+      openaiApiKey={effectiveOpenaiKey}
+      openaiApiUrl={effectiveOpenaiUrl}
+      geminiApiKey={geminiApiKey}
+      geminiApiUrl={effectiveGeminiUrl}
+      geminiEnterpriseEnabled={effectiveGeminiEnterpriseEnabled}
+      geminiEnterpriseProjectId={geminiEnterpriseProjectId}
+      geminiEnterpriseLocation={geminiEnterpriseLocation}
+      geminiEnterpriseToken={geminiEnterpriseToken}
+      geminiKeyPoolEnabled={geminiKeyPoolEnabled}
+      geminiKeyRotationEnabled={geminiKeyRotationEnabled}
+      geminiKeys={geminiKeys}
+      onClose={() => setActiveTool(null)}
+    />
     {showClearConfirm && (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
         <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-[90%] max-w-md p-6 space-y-4 border border-gray-200 dark:border-gray-800">

@@ -1,4 +1,4 @@
-import { Message, Role } from '../../types';
+import { GeminiImageSettings, Message, Role } from '../../types';
 import { createHttpError } from '../httpError';
 import { buildGeminiOutput, createGeminiContents, extractGeminiTextAndImages, looksLikeImageOutputModel } from './geminiShared';
 import { isLikelyGoogleGeminiEndpoint, normalizeGeminiBaseUrl } from './geminiUtils';
@@ -16,6 +16,7 @@ type GeminiEnterpriseOptions = {
   timeoutMs: number;
   abortSignal?: AbortSignal;
   customApiBase?: string;
+  imageSettings?: GeminiImageSettings;
 };
 
 const streamGeminiSse = async (response: Response, onChunk: (t: string) => void) => {
@@ -68,10 +69,12 @@ export const generateGeminiEnterpriseResponse = async ({
   timeoutMs,
   abortSignal,
   customApiBase,
+  imageSettings,
 }: GeminiEnterpriseOptions): Promise<void> => {
   const normalizedImageDataUrls = Array.isArray(imageDataUrls) ? imageDataUrls.filter(Boolean) : [];
   const hasAnyInputImages = normalizedImageDataUrls.length > 0 || historyHasImages(historyMessages);
   const wantsImageOutput = looksLikeImageOutputModel(model);
+  const effectiveImageSettings = imageSettings?.enabled ? imageSettings : undefined;
   const shouldStreamEnterprise = Boolean(shouldStream && !hasAnyInputImages && !wantsImageOutput);
 
   const origin =
@@ -82,7 +85,16 @@ export const generateGeminiEnterpriseResponse = async ({
   const contents = createGeminiContents(historyMessages, userText, normalizedImageDataUrls);
   const payload: any = { contents };
   if (wantsImageOutput) {
-    payload.generationConfig = { responseModalities: ['TEXT', 'IMAGE'] };
+    const generationConfig: any = { responseModalities: ['TEXT', 'IMAGE'] };
+    if (effectiveImageSettings) {
+      generationConfig.imageConfig = {
+        imageSize: effectiveImageSettings.resolution,
+      };
+      if (effectiveImageSettings.aspectRatio && effectiveImageSettings.aspectRatio !== 'auto') {
+        generationConfig.imageConfig.aspectRatio = effectiveImageSettings.aspectRatio;
+      }
+    }
+    payload.generationConfig = generationConfig;
   }
 
   const requestOnce = async (stream: boolean) => {
@@ -182,4 +194,3 @@ export const generateGeminiEnterpriseResponse = async ({
     throw new Error(`企业API请求失败：${message}`);
   }
 };
-

@@ -1,33 +1,41 @@
 import React from 'react';
-import { ArrowUp } from 'lucide-react';
-import { Language } from '../types';
+import { Film, Image, Sparkles, Layers } from 'lucide-react';
+import { Language, ToolView } from '../types';
 
 interface EmptyStateProps {
   language: Language;
-  onSendQuickPrompt: (text: string) => void;
+  onOpenTool: (tool: ToolView) => void;
 }
 
-export const EmptyState: React.FC<EmptyStateProps> = ({ language, onSendQuickPrompt }) => {
+export const EmptyState: React.FC<EmptyStateProps> = ({ language, onOpenTool }) => {
   const cards = [
     {
-      title: language === 'zh' ? '总结文章' : 'Summarize Text',
-      desc: language === 'zh' ? '总结下面文章' : 'Summarize the article below',
-      prompt: language === 'zh' ? '请帮我总结这篇文章的要点。' : 'Please summarize the key points of this article.',
+      id: 'slicer' as ToolView,
+      title: language === 'zh' ? '图片分割工厂' : 'Image Slicer',
+      desc: language === 'zh' ? '切片、九宫格、一键导出' : 'Slice images into grids',
+      icon: Image,
+      enabled: true,
     },
     {
-      title: language === 'zh' ? '解释概念' : 'Explain Concept',
-      desc: language === 'zh' ? '向初学者解释这个概念' : 'Explain this to a beginner',
-      prompt: language === 'zh' ? '请像对待初学者一样解释量子纠缠。' : 'Explain quantum entanglement to a beginner.',
+      id: 'videoFrames' as ToolView,
+      title: language === 'zh' ? '提取视频首尾帧' : 'Video Frames',
+      desc: language === 'zh' ? '上传 30 秒内视频并导出首/尾帧' : 'Extract first/last frame',
+      icon: Film,
+      enabled: true,
     },
     {
-      title: language === 'zh' ? '写代码' : 'Code Expert',
-      desc: language === 'zh' ? '编写一个 Python 脚本' : 'Write a Python script',
-      prompt: language === 'zh' ? '请帮我写一个Python脚本来实现文件批量重命名。' : 'Write a Python script to batch rename files.',
+      id: 'xhs' as ToolView,
+      title: language === 'zh' ? 'XHS 灵感实验室' : 'XHS Lab',
+      desc: language === 'zh' ? '灵感输入与内容结构输出' : 'Idea to outline',
+      icon: Sparkles,
+      enabled: true,
     },
     {
-      title: language === 'zh' ? '从图片提取文字' : 'OCR',
-      desc: language === 'zh' ? '从附加的图片中提取文字' : 'Extract text from image',
-      prompt: language === 'zh' ? '请分析这张图片并提取其中的文字。' : 'Please extract text from the attached image.',
+      id: 'more' as ToolView,
+      title: language === 'zh' ? '更多功能' : 'More Tools',
+      desc: language === 'zh' ? '敬请期待' : 'Coming soon',
+      icon: Layers,
+      enabled: false,
     },
   ];
 
@@ -43,20 +51,24 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ language, onSendQuickPro
         {cards.map((card, i) => (
           <button
             key={i}
-            onClick={() => onSendQuickPrompt(card.prompt)}
-            className="p-5 bg-gray-100/50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-2xl text-left transition-colors h-40 flex flex-col justify-between group border border-transparent hover:border-gray-200 dark:hover:border-gray-700"
+            onClick={() => card.enabled && onOpenTool(card.id)}
+            disabled={!card.enabled}
+            className={`p-5 rounded-2xl text-left transition-colors h-40 flex flex-col justify-between group border ${
+              card.enabled
+                ? 'bg-gray-100/50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 border-transparent hover:border-gray-200 dark:hover:border-gray-700'
+                : 'bg-gray-100/30 dark:bg-gray-800/30 border-transparent opacity-60 cursor-default'
+            }`}
           >
             <div>
+              <div className="flex items-center gap-2 mb-2 text-gray-500 dark:text-gray-400">
+                <card.icon size={18} />
+                <span className="text-xs uppercase tracking-wide">{language === 'zh' ? '工具' : 'Tool'}</span>
+              </div>
               <div className="font-medium text-gray-900 dark:text-white mb-1">{card.title}</div>
               <div className="text-sm text-gray-500 dark:text-gray-400">{card.desc}</div>
             </div>
-            <div className="flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
-              <span className="text-xs bg-white dark:bg-gray-700 px-2 py-1 rounded text-gray-500 dark:text-gray-300 shadow-sm">
-                {language === 'zh' ? '提示' : 'Prompt'}
-              </span>
-              <div className="p-1.5 bg-white dark:bg-gray-700 rounded-md shadow-sm text-gray-400 dark:text-gray-300">
-                <ArrowUp size={12} />
-              </div>
+            <div className="flex justify-end items-center text-xs text-gray-400 dark:text-gray-500">
+              {card.enabled ? (language === 'zh' ? '点击进入' : 'Enter') : language === 'zh' ? '即将开放' : 'Soon'}
             </div>
           </button>
         ))}
