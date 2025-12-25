@@ -178,6 +178,12 @@ const App: React.FC = () => {
     setHistoryButtonEnabled,
     moreImagesEnabled,
     setMoreImagesEnabled,
+    sora2piEnabled,
+    setSora2piEnabled,
+    roleCardsEnabled,
+    setRoleCardsEnabled,
+    roleCards,
+    setRoleCards,
     relays,
     setRelays,
     activeRelayId,
@@ -1570,6 +1576,12 @@ const App: React.FC = () => {
         setHistoryButtonEnabled={setHistoryButtonEnabled}
         moreImagesEnabled={moreImagesEnabled}
         setMoreImagesEnabled={setMoreImagesEnabled}
+        sora2piEnabled={sora2piEnabled}
+        setSora2piEnabled={setSora2piEnabled}
+        roleCardsEnabled={roleCardsEnabled}
+        setRoleCardsEnabled={setRoleCardsEnabled}
+        roleCards={roleCards}
+        setRoleCards={setRoleCards}
         devTbd1Enabled={devTbd1Enabled}
         setDevTbd1Enabled={setDevTbd1Enabled}
         devTbd2Enabled={devTbd2Enabled}
@@ -1727,11 +1739,13 @@ const App: React.FC = () => {
                     }
                     keyRotationEnabled={geminiKeyRotationEnabled}
                     onToggleKeyRotation={() => setGeminiKeyRotationEnabled((v) => !v)}
-	                  moreImagesEnabled={moreImagesEnabled}
-	                  showEnterpriseButton={apiMode === 'gemini' && enterpriseFeatureEnabled && geminiEnterpriseReady}
-	                  enterpriseEnabled={effectiveGeminiEnterpriseEnabled}
-	                  onToggleEnterpriseEnabled={() => setGeminiEnterpriseEnabled((v) => !v)}
-	                />
+  	                  moreImagesEnabled={moreImagesEnabled}
+                    roleCardsEnabled={roleCardsEnabled}
+                    roleCards={roleCards}
+  	                  showEnterpriseButton={apiMode === 'gemini' && enterpriseFeatureEnabled && geminiEnterpriseReady}
+  	                  enterpriseEnabled={effectiveGeminiEnterpriseEnabled}
+  	                  onToggleEnterpriseEnabled={() => setGeminiEnterpriseEnabled((v) => !v)}
+  	                />
 	              </div>
             </>
           ) : (
@@ -1862,6 +1876,8 @@ const App: React.FC = () => {
                     keyRotationEnabled={geminiKeyRotationEnabled}
                     onToggleKeyRotation={() => setGeminiKeyRotationEnabled((v) => !v)}
 	                  moreImagesEnabled={moreImagesEnabled}
+                    roleCardsEnabled={roleCardsEnabled}
+                    roleCards={roleCards}
 	                  showEnterpriseButton={apiMode === 'gemini' && enterpriseFeatureEnabled && geminiEnterpriseReady}
 	                  enterpriseEnabled={effectiveGeminiEnterpriseEnabled}
 	                  onToggleEnterpriseEnabled={() => setGeminiEnterpriseEnabled((v) => !v)}

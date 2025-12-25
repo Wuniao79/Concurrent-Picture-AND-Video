@@ -526,13 +526,13 @@ export const PromptLibraryModal: React.FC<PromptLibraryModalProps> = ({ isOpen, 
               <div className="flex-1 min-h-0 flex flex-col gap-3">
                 <div className="grid grid-cols-5 grid-rows-3 gap-3 flex-1 min-h-0">
                   {pageItems.map((item, idx) => {
-                    const title = item.title || 'Untitled';
+                    const title = (item.title || '').trim() || (language === 'zh' ? '未命名' : 'Untitled');
                     const prompt = item.prompt || '';
-                  const key = getItemKey(item);
-                  const itemId = item.id || key;
-                  const modeLabel = mapModeLabel(item.mode);
-                  const isFav = favorites.has(key);
-                  const isCustom = item.source === 'custom';
+                    const key = getItemKey(item);
+                    const itemId = item.id || key;
+                    const modeLabel = mapModeLabel(item.mode);
+                    const isFav = favorites.has(key);
+                    const isCustom = item.source === 'custom';
                     return (
                       <div
                         key={`${title}-${idx}`}
@@ -554,40 +554,44 @@ export const PromptLibraryModal: React.FC<PromptLibraryModalProps> = ({ isOpen, 
                               {language === 'zh' ? '暂无预览图' : 'No preview'}
                             </div>
                           )}
-                        <div className="absolute top-2 right-2 flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => toggleFavorite(item)}
-                            className="h-7 w-7 rounded-full bg-gray-900/70 text-white flex items-center justify-center shadow"
-                          >
-                            <Star size={12} fill={isFav ? 'currentColor' : 'none'} />
-                          </button>
-                          {isCustom && (
+                          <div className="absolute top-2 right-2 flex items-center gap-1">
                             <button
                               type="button"
-                              onClick={() => handleDeleteCustom(itemId, key)}
-                              className="h-7 w-7 rounded-full bg-red-500/90 text-white flex items-center justify-center shadow"
-                              aria-label={language === 'zh' ? '删除' : 'Delete'}
+                              onClick={() => toggleFavorite(item)}
+                              className="h-7 w-7 rounded-full bg-gray-900/70 text-white flex items-center justify-center shadow"
                             >
-                              <Trash2 size={12} />
+                              <Star size={12} fill={isFav ? 'currentColor' : 'none'} />
                             </button>
-                          )}
-                        </div>
-                          <div className="absolute bottom-2 left-2 flex flex-wrap gap-1">
-                            {item.category && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] bg-white/90 text-gray-700">
-                                {item.category}
-                              </span>
+                            {isCustom && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteCustom(itemId, key)}
+                                className="h-7 w-7 rounded-full bg-red-500/90 text-white flex items-center justify-center shadow"
+                                aria-label={language === 'zh' ? '删除' : 'Delete'}
+                              >
+                                <Trash2 size={12} />
+                              </button>
                             )}
-                            {modeLabel && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/90 text-white">
-                                {modeLabel}
-                              </span>
+                          </div>
+                          <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/70 via-black/30 to-transparent">
+                            <div className="text-xs font-semibold text-white line-clamp-2">{title}</div>
+                            {(item.category || modeLabel) && (
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {item.category && (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] bg-white/90 text-gray-700">
+                                    {item.category}
+                                  </span>
+                                )}
+                                {modeLabel && (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/90 text-white">
+                                    {modeLabel}
+                                  </span>
+                                )}
+                              </div>
                             )}
                           </div>
                         </div>
                         <div className="p-3 flex flex-col gap-2 flex-1 min-h-0">
-                          <div className="text-xs font-semibold text-gray-900 dark:text-white line-clamp-2">{title}</div>
                           <div className="text-[11px] text-gray-500 dark:text-gray-400 line-clamp-2">
                             {prompt || (language === 'zh' ? '暂无提示词内容' : 'No prompt text')}
                           </div>

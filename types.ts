@@ -70,6 +70,22 @@ export interface LaneState extends LaneConfig {
   errorCode?: number;
 }
 
+export type RoleCardKind = 'role' | 'prompt';
+
+export type RoleCardItem = {
+  id: string;
+  kind: RoleCardKind;
+  alias: string;
+  /** Only for role items (without leading @). */
+  atId?: string;
+  /** Only for prompt items. */
+  insertContent?: string;
+  avatarDataUrl?: string;
+  note?: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
 export const AVAILABLE_MODELS: Model[] = [
   {
     id: 'sora-video-10s',

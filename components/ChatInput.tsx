@@ -1,6 +1,21 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUp, Plus, X, Expand, Minimize2, Lock, Unlock, Building2, Shuffle, Download, Loader2, ChevronDown, ChevronUp, Sparkles, SlidersHorizontal, Image as ImageIcon, Film, LayoutGrid, Layers } from 'lucide-react';
-import { ToolView } from '../types';
+import { RoleCardItem, ToolView } from '../types';
+
+type InputTrigger = {
+  type: '@' | '/';
+  start: number;
+  query: string;
+};
+
+type CardSuggestion = {
+  id: string;
+  kind: 'role' | 'prompt';
+  label: string;
+  insertText: string;
+  meta: string;
+  avatarDataUrl?: string;
+};
 
 interface ChatInputProps {
   onSend: (text: string, images: string[]) => void;
@@ -15,6 +30,8 @@ interface ChatInputProps {
   laneLocked: boolean;
   onToggleLaneLock: () => void;
   moreImagesEnabled: boolean;
+  roleCardsEnabled?: boolean;
+  roleCards?: RoleCardItem[];
   showEnterpriseButton?: boolean;
   enterpriseEnabled?: boolean;
   onToggleEnterpriseEnabled?: () => void;
@@ -53,6 +70,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   laneLocked,
   onToggleLaneLock,
   moreImagesEnabled,
+  roleCardsEnabled = false,
+  roleCards = [],
   showEnterpriseButton,
   enterpriseEnabled,
   onToggleEnterpriseEnabled,
@@ -85,7 +104,12 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const [isToolMenuOpen, setIsToolMenuOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toolMenuRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const suggestMenuRef = useRef<HTMLDivElement>(null);
+  const [trigger, setTrigger] = useState<InputTrigger | null>(null);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
   const effectiveCollapsed = typeof isCollapsed === 'boolean' ? isCollapsed : localCollapsed;
+  const t = (zh: string, en: string) => (language === 'zh' ? zh : en);
   const setCollapsed = (next: boolean) => {
     if (onCollapseChange) {
       onCollapseChange(next);
@@ -122,6 +146,162 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       window.removeEventListener('mousedown', handleClick);
     };
   }, [isToolMenuOpen]);
+
+  const normalizedRoleCards = useMemo(() => (Array.isArray(roleCards) ? roleCards : []), [roleCards]);
+
+  const roleSuggestions = useMemo<CardSuggestion[]>(() => {
+    return normalizedRoleCards
+      .filter((item) => item.kind === 'role')
+      .map((item) => {
+        const alias = (item.alias || '').trim();
+        const atId = (item.atId || '').trim();
+        return {
+          id: item.id,
+          kind: 'role' as const,
+          label: alias,
+          insertText: atId ? `@${atId.replace(/^@+/, '')}` : '',
+          meta: atId ? `@${atId.replace(/^@+/, '')}` : '',
+          avatarDataUrl: item.avatarDataUrl,
+        };
+      })
+      .filter((item) => item.label && item.insertText);
+  }, [normalizedRoleCards]);
+
+  const promptSuggestions = useMemo<CardSuggestion[]>(() => {
+    return normalizedRoleCards
+      .filter((item) => item.kind === 'prompt')
+      .map((item) => {
+        const alias = (item.alias || '').trim();
+        const insertContent = (item.insertContent || '').trim();
+        const preview = insertContent.length > 40 ? `${insertContent.slice(0, 40)}…` : insertContent;
+        return {
+          id: item.id,
+          kind: 'prompt' as const,
+          label: alias,
+          insertText: insertContent,
+          meta: preview,
+          avatarDataUrl: item.avatarDataUrl,
+        };
+      })
+      .filter((item) => item.label && item.insertText);
+  }, [normalizedRoleCards]);
+
+  const filteredSuggestions = useMemo<CardSuggestion[]>(() => {
+    if (!roleCardsEnabled || !trigger) return [];
+    const q = (trigger.query || '').trim().toLowerCase();
+    const base = trigger.type === '@' ? roleSuggestions : [...roleSuggestions, ...promptSuggestions];
+    if (!q) return base;
+    return base.filter((item) => {
+      const label = (item.label || '').toLowerCase();
+      const meta = (item.meta || '').toLowerCase();
+      return label.includes(q) || meta.includes(q);
+    });
+  }, [promptSuggestions, roleCardsEnabled, roleSuggestions, trigger]);
+
+  useEffect(() => {
+    if (!roleCardsEnabled && trigger) {
+      setTrigger(null);
+      setActiveSuggestionIndex(0);
+    }
+  }, [roleCardsEnabled, trigger]);
+
+  useEffect(() => {
+    setActiveSuggestionIndex((prev) => {
+      if (filteredSuggestions.length <= 0) return 0;
+      return Math.min(prev, filteredSuggestions.length - 1);
+    });
+  }, [filteredSuggestions.length]);
+
+  useEffect(() => {
+    if (!trigger) return;
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (suggestMenuRef.current && suggestMenuRef.current.contains(target)) return;
+      if (textareaRef.current && textareaRef.current.contains(target)) return;
+      setTrigger(null);
+    };
+    window.addEventListener('mousedown', handleClick);
+    return () => {
+      window.removeEventListener('mousedown', handleClick);
+    };
+  }, [trigger]);
+
+  const findLastTrigger = (textBeforeCaret: string, kind: '@' | '/'): InputTrigger | null => {
+    for (let idx = textBeforeCaret.length - 1; idx >= 0; idx -= 1) {
+      if (textBeforeCaret[idx] !== kind) continue;
+      if (idx > 0) {
+        const prev = textBeforeCaret[idx - 1];
+        if (/[A-Za-z0-9_]/.test(prev)) continue;
+      }
+      const query = textBeforeCaret.slice(idx + 1);
+      if (/\s/.test(query)) continue;
+      return { type: kind, start: idx, query };
+    }
+    return null;
+  };
+
+  const resolveTrigger = (value: string, caret: number): InputTrigger | null => {
+    if (!roleCardsEnabled) return null;
+    const safeCaret = Math.max(0, Math.min(value.length, caret));
+    const prefix = value.slice(0, safeCaret);
+    const atTrigger = findLastTrigger(prefix, '@');
+    const slashTrigger = findLastTrigger(prefix, '/');
+    if (atTrigger && slashTrigger) {
+      return atTrigger.start > slashTrigger.start ? atTrigger : slashTrigger;
+    }
+    return atTrigger || slashTrigger;
+  };
+
+  const syncTriggerFromTextarea = (el: HTMLTextAreaElement) => {
+    if (!roleCardsEnabled) {
+      setTrigger(null);
+      return;
+    }
+    const caret = typeof el.selectionStart === 'number' ? el.selectionStart : el.value.length;
+    const next = resolveTrigger(el.value || '', caret);
+    setTrigger(next);
+    const prev = trigger;
+    const hasChanged =
+      (!prev && !!next) ||
+      (!!prev && !next) ||
+      (prev && next && (prev.type !== next.type || prev.start !== next.start || prev.query !== next.query));
+    if (hasChanged) {
+      setActiveSuggestionIndex(0);
+    }
+  };
+
+  const applySuggestion = (item: CardSuggestion) => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const current = trigger;
+    if (!current) return;
+    const start = Math.max(0, Math.min(promptInput.length, current.start));
+    const typedEnd = current.start + 1 + (current.query || '').length;
+    const end = Math.max(start, Math.min(promptInput.length, typedEnd));
+
+    const before = promptInput.slice(0, start);
+    const after = promptInput.slice(end);
+    let insert = item.insertText || '';
+    if (insert && !/\s$/.test(insert)) {
+      const nextChar = after[0];
+      if (!nextChar || !/\s/.test(nextChar)) {
+        insert += ' ';
+      }
+    }
+
+    const nextValue = `${before}${insert}${after}`;
+    const nextCursor = before.length + insert.length;
+    setPromptInput(nextValue);
+    setTrigger(null);
+    setActiveSuggestionIndex(0);
+
+    requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      textarea.focus();
+      textarea.setSelectionRange(nextCursor, nextCursor);
+    });
+  };
 
   const estimateDataUrlBytes = (dataUrl: string) => {
     const comma = dataUrl.indexOf(',');
@@ -239,8 +419,35 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     });
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (inputDisabled) return;
+
+    if (roleCardsEnabled && trigger) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setTrigger(null);
+        return;
+      }
+
+      if (e.key === 'ArrowDown' && filteredSuggestions.length > 0) {
+        e.preventDefault();
+        setActiveSuggestionIndex((prev) => Math.min(prev + 1, Math.max(0, filteredSuggestions.length - 1)));
+        return;
+      }
+
+      if (e.key === 'ArrowUp' && filteredSuggestions.length > 0) {
+        e.preventDefault();
+        setActiveSuggestionIndex((prev) => Math.max(0, prev - 1));
+        return;
+      }
+
+      if ((e.key === 'Enter' || e.key === 'Tab') && filteredSuggestions.length > 0) {
+        e.preventDefault();
+        applySuggestion(filteredSuggestions[activeSuggestionIndex] || filteredSuggestions[0]);
+        return;
+      }
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleTriggerSend();
@@ -276,6 +483,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     onSend(promptInput, selectedImages);
     setPromptInput('');
     setSelectedImages([]);
+    setTrigger(null);
+    setActiveSuggestionIndex(0);
   };
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -371,9 +580,16 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           >
             <div className={`px-4 ${isExpanded ? 'pt-4 pb-3' : 'pt-3 pb-2'}`}>
               <textarea
+                ref={textareaRef}
                 value={promptInput}
-                onChange={(e) => setPromptInput(e.target.value)}
+                onChange={(e) => {
+                  setPromptInput(e.target.value);
+                  syncTriggerFromTextarea(e.target);
+                }}
                 onKeyDown={handleKeyDown}
+                onKeyUp={(e) => syncTriggerFromTextarea(e.currentTarget)}
+                onClick={(e) => syncTriggerFromTextarea(e.currentTarget)}
+                onSelect={(e) => syncTriggerFromTextarea(e.currentTarget)}
                 onPaste={handlePaste}
                 disabled={inputDisabled}
                 placeholder={
@@ -390,6 +606,75 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 <div className="mt-2 px-3 text-xs text-gray-500 dark:text-gray-400">{inputDisabledHint}</div>
               )}
             </div>
+
+            {roleCardsEnabled && trigger && (
+              <div
+                ref={suggestMenuRef}
+                className="absolute left-4 right-4 sm:right-auto bottom-full mb-3 z-50 sm:w-[360px]"
+              >
+                <div className="rounded-2xl border border-gray-200/70 dark:border-white/10 bg-white/95 dark:bg-[#0b1220]/95 backdrop-blur-xl shadow-2xl ring-1 ring-black/5 dark:ring-white/5 overflow-hidden p-2.5">
+                  <div className="px-2 py-1.5 text-[11px] text-gray-500 dark:text-gray-400 flex items-center justify-between">
+                    <span className="font-semibold">
+                      {trigger.type === '@' ? t('@ 角色', '@ Roles') : t('/ 角色 / 提示词', '/ Roles / Prompts')}
+                    </span>
+                    <span className="font-mono">{filteredSuggestions.length}</span>
+                  </div>
+                  <div className="max-h-60 overflow-y-auto">
+                    {filteredSuggestions.length === 0 ? (
+                      <div className="px-3 py-3 text-sm text-gray-500 dark:text-gray-400">
+                        {t('没有匹配项', 'No matches')}
+                      </div>
+                    ) : (
+                      filteredSuggestions.map((item, idx) => {
+                        const isActive = idx === activeSuggestionIndex;
+                        const badge = item.kind === 'role' ? t('角色', 'Role') : t('提示词', 'Prompt');
+                        const badgeClass =
+                          item.kind === 'role'
+                            ? 'border-emerald-500/20 text-emerald-700 dark:text-emerald-200 bg-emerald-500/10'
+                            : 'border-indigo-500/20 text-indigo-700 dark:text-indigo-200 bg-indigo-500/10';
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              applySuggestion(item);
+                            }}
+                            className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-2xl text-left transition-colors border ${
+                              isActive
+                                ? 'bg-blue-500/10 border-blue-500/20'
+                                : 'border-transparent hover:bg-gray-100/70 dark:hover:bg-white/5'
+                            }`}
+                          >
+                            <div className="h-8 w-8 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-800 flex items-center justify-center shrink-0 ring-1 ring-gray-200/80 dark:ring-white/10">
+                              {item.avatarDataUrl ? (
+                                <img src={item.avatarDataUrl} alt="avatar" className="h-full w-full object-cover" />
+                              ) : (
+                                <span className="text-xs font-bold text-gray-500 dark:text-gray-300">
+                                  {item.kind === 'role' ? '@' : '/'}
+                                </span>
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate">
+                                {item.label}
+                              </div>
+                              <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{item.meta}</div>
+                            </div>
+                            <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] border ${badgeClass}`}>
+                              {badge}
+                            </span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                  <div className="px-2 pt-2 text-[11px] text-gray-400 dark:text-gray-500">
+                    {t('↑↓ 选择，Enter/Tab 确认，Esc 关闭', '↑↓ to navigate, Enter/Tab to insert, Esc to close')}
+                  </div>
+                </div>
+              </div>
+            )}
 
             <input
               type="file"

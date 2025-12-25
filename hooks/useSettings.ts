@@ -8,6 +8,7 @@ import {
   GeminiAspectRatio,
   GeminiImageSettings,
   GeminiResolution,
+  RoleCardItem,
 } from '../types';
 import { safeStorageGet, safeStorageSet } from '../utils/storage';
 import { v4 as uuidv4 } from 'uuid';
@@ -221,6 +222,29 @@ export const useSettings = (options: UseSettingsOptions = {}) => {
     return stored === '1';
   });
 
+  const [sora2piEnabled, setSora2piEnabled] = useState<boolean>(() => {
+    const stored = safeStorageGet('sora_sora2pi_enabled');
+    return stored === '1';
+  });
+
+  const [roleCardsEnabled, setRoleCardsEnabled] = useState<boolean>(() => {
+    const stored = safeStorageGet('sora_role_cards_enabled');
+    return stored === '1';
+  });
+
+  const [roleCards, setRoleCards] = useState<RoleCardItem[]>(() => {
+    const stored = safeStorageGet('sora_role_cards_v1');
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) return parsed as RoleCardItem[];
+      } catch {
+        // ignore
+      }
+    }
+    return [];
+  });
+
   const [relays, setRelays] = useState<RelaySite[]>(() => {
     const stored = safeStorageGet('sora_relays');
     if (stored) {
@@ -410,6 +434,22 @@ export const useSettings = (options: UseSettingsOptions = {}) => {
   }, [moreImagesEnabled]);
 
   useEffect(() => {
+    safeStorageSet('sora_sora2pi_enabled', sora2piEnabled ? '1' : '0');
+  }, [sora2piEnabled]);
+
+  useEffect(() => {
+    safeStorageSet('sora_role_cards_enabled', roleCardsEnabled ? '1' : '0');
+  }, [roleCardsEnabled]);
+
+  useEffect(() => {
+    try {
+      safeStorageSet('sora_role_cards_v1', JSON.stringify(roleCards.slice(0, 200)));
+    } catch {
+      // ignore
+    }
+  }, [roleCards]);
+
+  useEffect(() => {
     try {
       safeStorageSet('sora_relays', JSON.stringify(relays));
     } catch {
@@ -519,6 +559,12 @@ export const useSettings = (options: UseSettingsOptions = {}) => {
     setHistoryButtonEnabled,
     moreImagesEnabled,
     setMoreImagesEnabled,
+    sora2piEnabled,
+    setSora2piEnabled,
+    roleCardsEnabled,
+    setRoleCardsEnabled,
+    roleCards,
+    setRoleCards,
     relays,
     setRelays,
     activeRelayId,

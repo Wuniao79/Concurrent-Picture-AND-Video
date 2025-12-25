@@ -16,9 +16,41 @@ type SliceResult = {
   blob: Blob;
 };
 
+const MIN_SLICE_PX = 4;
+
 const createId = () => Math.random().toString(36).slice(2);
 
 const clampPercent = (value: number) => Math.max(0, Math.min(100, value));
+
+const getMinGapPx = (axisSize: number) => {
+  if (axisSize <= 0) return 0;
+  return Math.max(1, Math.min(MIN_SLICE_PX, Math.floor(axisSize / 2)));
+};
+
+const clampLinePercent = (value: number, axisSize: number | null) => {
+  const safeValue = clampPercent(value);
+  if (!axisSize || axisSize <= 0) return safeValue;
+  const minGap = getMinGapPx(axisSize);
+  const minPercent = (minGap / axisSize) * 100;
+  return Math.max(minPercent, Math.min(100 - minPercent, safeValue));
+};
+
+const buildStops = (percents: number[], axisSize: number) => {
+  if (axisSize <= 0) return [0];
+  const minGap = getMinGapPx(axisSize);
+  const rawPositions = percents
+    .map((percent) => Math.round((clampPercent(percent) / 100) * axisSize))
+    .filter((pos) => pos > minGap && pos < axisSize - minGap)
+    .sort((a, b) => a - b);
+
+  const positions: number[] = [];
+  rawPositions.forEach((pos) => {
+    if (positions.length === 0 || pos - positions[positions.length - 1] >= minGap) {
+      positions.push(pos);
+    }
+  });
+  return [0, ...positions, axisSize];
+};
 
 interface ImageSlicerModalProps {
   isOpen: boolean;
@@ -36,7 +68,7 @@ export const ImageSlicerModal: React.FC<ImageSlicerModalProps> = ({ isOpen, lang
   const [isProcessing, setIsProcessing] = useState(false);
   const [results, setResults] = useState<SliceResult[]>([]);
   const [dragging, setDragging] = useState<SliceLine | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const imageBoxRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -79,26 +111,30 @@ export const ImageSlicerModal: React.FC<ImageSlicerModalProps> = ({ isOpen, lang
   };
 
   const handleCanvasClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (!imageSrc || !containerRef.current) return;
+    if (!imageSrc || !imageBoxRef.current) return;
     if (dragging) return;
-    const rect = containerRef.current.getBoundingClientRect();
+    const rect = imageBoxRef.current.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
+    if (x < 0 || y < 0 || x > rect.width || y > rect.height) return;
     const percent = mode === 'h' ? (y / rect.height) * 100 : (x / rect.width) * 100;
-    const nextLine: SliceLine = { id: createId(), type: mode, percent: clampPercent(percent) };
+    const axisSize = naturalSize ? (mode === 'h' ? naturalSize.h : naturalSize.w) : mode === 'h' ? rect.height : rect.width;
+    const nextLine: SliceLine = { id: createId(), type: mode, percent: clampLinePercent(percent, axisSize) };
     setLines((prev) => [...prev, nextLine]);
   };
 
   useEffect(() => {
-    if (!dragging || !containerRef.current) return;
+    if (!dragging || !imageBoxRef.current) return;
     const handleMove = (event: PointerEvent) => {
-      const rect = containerRef.current?.getBoundingClientRect();
+      const rect = imageBoxRef.current?.getBoundingClientRect();
       if (!rect) return;
       const percent =
         dragging.type === 'h'
           ? ((event.clientY - rect.top) / rect.height) * 100
           : ((event.clientX - rect.left) / rect.width) * 100;
-      const next = clampPercent(percent);
+      const axisSize = naturalSize ? (dragging.type === 'h' ? naturalSize.h : naturalSize.w) : dragging.type === 'h' ? rect.height : rect.width;
+      const next = clampLinePercent(percent, axisSize);
       setLines((prev) => prev.map((line) => (line.id === dragging.id ? { ...line, percent: next } : line)));
     };
     const handleUp = () => setDragging(null);
@@ -108,7 +144,7 @@ export const ImageSlicerModal: React.FC<ImageSlicerModalProps> = ({ isOpen, lang
       window.removeEventListener('pointermove', handleMove);
       window.removeEventListener('pointerup', handleUp);
     };
-  }, [dragging]);
+  }, [dragging, naturalSize]);
 
   const sortedLines = useMemo(() => {
     const horizontal = lines.filter((l) => l.type === 'h').map((l) => l.percent).sort((a, b) => a - b);
@@ -122,18 +158,18 @@ export const ImageSlicerModal: React.FC<ImageSlicerModalProps> = ({ isOpen, lang
     setIsProcessing(true);
 
     const { w, h } = naturalSize;
-    const xPercents = [0, ...sortedLines.vertical, 100];
-    const yPercents = [0, ...sortedLines.horizontal, 100];
+    const xStops = buildStops(sortedLines.vertical, w);
+    const yStops = buildStops(sortedLines.horizontal, h);
     const nextResults: SliceResult[] = [];
 
-    for (let row = 0; row < yPercents.length - 1; row += 1) {
-      for (let col = 0; col < xPercents.length - 1; col += 1) {
-        const x0 = (xPercents[col] / 100) * w;
-        const x1 = (xPercents[col + 1] / 100) * w;
-        const y0 = (yPercents[row] / 100) * h;
-        const y1 = (yPercents[row + 1] / 100) * h;
-        const sliceW = Math.max(1, Math.round(x1 - x0));
-        const sliceH = Math.max(1, Math.round(y1 - y0));
+    for (let row = 0; row < yStops.length - 1; row += 1) {
+      for (let col = 0; col < xStops.length - 1; col += 1) {
+        const x0 = xStops[col];
+        const x1 = xStops[col + 1];
+        const y0 = yStops[row];
+        const y1 = yStops[row + 1];
+        const sliceW = Math.max(1, x1 - x0);
+        const sliceH = Math.max(1, y1 - y0);
         const canvas = document.createElement('canvas');
         if (forceSquare) {
           const maxDim = Math.max(sliceW, sliceH);
@@ -301,9 +337,7 @@ export const ImageSlicerModal: React.FC<ImageSlicerModalProps> = ({ isOpen, lang
               {language === 'zh' ? '切片画布' : 'Canvas'}
             </div>
             <div
-              ref={containerRef}
               className="relative w-full min-h-[320px] border border-dashed border-gray-300 dark:border-gray-700 rounded-xl flex items-center justify-center overflow-hidden bg-gray-50 dark:bg-gray-800/50"
-              onClick={handleCanvasClick}
             >
               {!imageSrc && (
                 <div className="text-sm text-gray-400 text-center px-4">
@@ -311,7 +345,11 @@ export const ImageSlicerModal: React.FC<ImageSlicerModalProps> = ({ isOpen, lang
                 </div>
               )}
               {imageSrc && (
-                <>
+                <div
+                  ref={imageBoxRef}
+                  className="relative inline-block max-w-full"
+                  onClick={handleCanvasClick}
+                >
                   <img
                     ref={imageRef}
                     src={imageSrc}
@@ -328,6 +366,7 @@ export const ImageSlicerModal: React.FC<ImageSlicerModalProps> = ({ isOpen, lang
                           ? { top: `${line.percent}%` }
                           : { left: `${line.percent}%` }
                       }
+                      onClick={(e) => e.stopPropagation()}
                       onPointerDown={(e) => {
                         e.stopPropagation();
                         setDragging(line);
@@ -345,7 +384,7 @@ export const ImageSlicerModal: React.FC<ImageSlicerModalProps> = ({ isOpen, lang
                       </button>
                     </div>
                   ))}
-                </>
+                </div>
               )}
             </div>
           </div>

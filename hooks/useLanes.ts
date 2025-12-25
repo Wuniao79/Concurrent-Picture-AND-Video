@@ -451,6 +451,11 @@ export const useLanes = (options: UseLanesOptions) => {
         return poolKeys[idx] || poolKeys[0];
       };
 
+      const resolveOpenaiApi = () => ({
+        apiKey: (openaiApiKey || '').trim(),
+        apiUrl: (openaiApiUrl || '').trim(),
+      });
+
       const promises = normalizedLanes.map(async (lane, laneIndex) => {
         const laneId = lane.id;
         let botMessageText = '';
@@ -498,11 +503,9 @@ export const useLanes = (options: UseLanesOptions) => {
             state.started = true;
           }
           const modelProvider: ModelProvider = targetProvider;
-          const activeApiKey = modelProvider === 'gemini' ? resolveGeminiApiKey(laneIndex) : openaiApiKey;
-          const activeApiBaseUrl =
-            modelProvider === 'gemini'
-              ? (geminiApiUrl && geminiApiUrl.trim()) || ''
-              : (openaiApiUrl && openaiApiUrl.trim()) || '';
+          const openaiApi = resolveOpenaiApi();
+          const activeApiKey = modelProvider === 'gemini' ? resolveGeminiApiKey(laneIndex) : openaiApi.apiKey;
+          const activeApiBaseUrl = modelProvider === 'gemini' ? (geminiApiUrl && geminiApiUrl.trim()) || '' : openaiApi.apiUrl;
 
           await generateResponse(
             normalizedModelId,
