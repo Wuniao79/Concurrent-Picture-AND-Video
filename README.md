@@ -6,22 +6,29 @@
  
 ## 📸 界面概览
 
-<img width="2521" height="1305" alt="image" src="https://github.com/user-attachments/assets/7e3ec990-26c4-493c-96d5-c2c93925c32a" />
+<img width="2534" height="1300" alt="image" src="https://github.com/user-attachments/assets/df24b116-353e-4bd0-a258-e050c9fef64b" />
 
 
 
-<img width="2551" height="1342" alt="image" src="https://github.com/user-attachments/assets/33c4c1a1-ab36-4821-a985-e79201bae3bf" />
+<img width="2492" height="1276" alt="image" src="https://github.com/user-attachments/assets/ca8608e8-f84f-44e0-80b6-16ea1f47d687" />
+
 
 
 ### ⏰并发场景
 
-<img width="2559" height="1433" alt="image" src="https://github.com/user-attachments/assets/852def70-55c7-4962-a8f9-3073a81b257d" />
+<img width="2522" height="1303" alt="image" src="https://github.com/user-attachments/assets/16cd350e-6770-49e0-a60d-e003775f639d" />
 
-#### 图片并发
-<img width="2555" height="1347" alt="image" src="https://github.com/user-attachments/assets/6c376b80-41b2-4c74-9612-f6bcb81f6a33" />
+<img width="2529" height="1332" alt="image" src="https://github.com/user-attachments/assets/9ad4c09d-6ff0-4736-ae5d-6f8dc4ddd3b8" />
 
-#### 文字并发
-<img width="2559" height="1341" alt="image" src="https://github.com/user-attachments/assets/a82ae624-d9c5-4599-88a8-b13214e67e99" />
+
+
+#### 🧩图片并发
+
+<img width="2539" height="1301" alt="image" src="https://github.com/user-attachments/assets/83e18614-394d-4809-8863-b78691e6ad95" />
+
+
+#### 📋文字并发
+<img width="2544" height="1303" alt="image" src="https://github.com/user-attachments/assets/59872002-61fc-4365-ad71-f5f7f499e46c" />
 
 
 </div>
@@ -32,10 +39,10 @@
 - ### ⚙️ 支持所有中转站、OpenAI和Gemini的视频、图片和文字模型  
 - ### 🔓 可自定义模型名称，无任何限制
 - ### ✍️ 自带并发历史，可多历史同时运行
-- ### 🖼️ 自带提示词库，图片分割以及视频首尾帧提取
+- ### 🎭 新增角色卡与提示词，无需反复复制角色ID与描述词
+- ### 🖼️ 提示词库，图片分割以及视频首尾帧提取
 - ### 🛡️ **全局提示 / 加载 / 进度条 / 错误处理**，整体体验更顺滑
 - ### 🌓 **明暗主题** - 护眼模式，随心切换
-
 - ### 💾 **本地存储** - 隐私安全，数据不上传
 
 ---
@@ -62,8 +69,12 @@
   - 🖼️ 单击图片进入灯箱预览（Lightbox），支持查看大图与细节
 
 ### **超多工具在线调用**
-  - 🔧自带图片分割工厂、提取视频首尾帧和XHS 灵感实验室等在线工具站
+  - 🏭自带图片分割工厂、提取视频首尾帧和XHS 灵感实验室等在线工具站
   - 💿未来会新增更多功能
+
+### **📂角色卡与提示词库**
+  - ✍️可自定义快捷角色和提示词，快速调用无需反复复制。
+  - 🗒️在提示框内使用【@】或【/】即可快速调用。
 
 
 ### **Sora2 视频的 Remix 复制按钮**
@@ -141,16 +152,17 @@ http://localhost:5015
 ##### 2025年12月13日： V3.0-v1 更新并发历史功能，修复Gemini官方模型偶尔无法获取图片或图片格式解析错误问题。美化UI以及小细节优化。
 ##### 2025年12月19日： V3.4-v1 新增图片一键下载按钮，谷歌密钥轮询。修复了并发历史还存在的部分bug以及小细节UI优化。
 ##### 2025年12月23日： V3.9-v1 新增并发间隔、一键下载地址和图片分割工厂等快捷功能，以及UI方面小细节优化。
+##### 2025年12月25日： V4.0-v1 新增角色卡与提示词和Sora2pi提示词选项。UI方面小细节优化和部分bug修复。
 
 
 ---
 ## 🛣️ Roadmap（3.1及未来版本计划）
 -  优化更多其他小细节优化
 -  多人在线聊天室？（存疑）
--  Sora2故事版功能
 -  加入如的DeepSeek、魔塔等官方接口？（存疑）
--  ~~多模式形态切换，如加入banana pro的4k 绘图设置选项等~~
--  ~~以及banana提示词小组件等...~~
+- ✅~~Sora2故事版功能~~
+- ✅~~多模式形态切换，如加入banana pro的4k 绘图设置选项等~~
+- ✅~~以及banana提示词小组件等...~~
 - ✅ ~~支持Gemini官方API~~
 - ✅~~增加历史记录功能（目前还不稳定）~~
 - 更多...
@@ -162,7 +174,8 @@ http://localhost:5015
 
 ## 🤝 与原项目的关系 & 贡献
 
-首先必须感谢 **TheSmallHanCat** 佬的这个项目https://github.com/TheSmallHanCat/sora2api
+首先必须感谢 **TheSmallHanCat** 佬的这个项目
+https://github.com/TheSmallHanCat/sora2api
 
 此项目建立初衷完全是基于使用 **Sora2** 视频创作而建造。
 
