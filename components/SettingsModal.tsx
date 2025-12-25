@@ -869,7 +869,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     e.preventDefault();
   };
 
-  const APP_VERSION = 'V3.9-v1';
+  const APP_VERSION = 'V4.0-v1';
 
   const handleCopyVersionHover = async () => {
     try {
