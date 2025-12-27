@@ -213,6 +213,10 @@ https://github.com/Tansuo2021/gemini-3-pro-image-preview
 - 本项目本质上只是一个 **API 调用客户端**，不提供任何 AI 模型本身。  
 - 请确保你的使用符合各个模型提供方（如 Google、OpenAI 等）的服务条款。  
 - 请勿使用本项目生成、传播违反法律法规或平台规范的内容。
+- 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Wuniao79/Concurrent-Picture-AND-Video&type=date&legend=top-left)](https://www.star-history.com/#Wuniao79/Concurrent-Picture-AND-Video&type=date&legend=top-left)
 ---
 
 
