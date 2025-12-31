@@ -50,10 +50,10 @@ async function ensurePortFree(port) {
 async function start() {
   await ensurePortFree(PORT);
 
-  const child = spawn('npm', ['run', 'dev:serve'], {
-    stdio: 'inherit',
-    shell: true,
-  });
+  const child =
+    platform() === 'win32'
+      ? spawn('cmd.exe', ['/d', '/s', '/c', 'npm run dev:serve'], { stdio: 'inherit' })
+      : spawn('npm', ['run', 'dev:serve'], { stdio: 'inherit' });
 
   const cleanup = () => {
     if (!child.killed) {

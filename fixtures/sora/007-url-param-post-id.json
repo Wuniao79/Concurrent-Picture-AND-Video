@@ -1,0 +1,11 @@
+{
+  "name": "url-param-post-id-no-video",
+  "input": "https://example.com/remix?post_id=post_URLPARAM6789",
+  "expected": {
+    "logsText": null,
+    "videoSrc": null,
+    "fullHtml": null,
+    "remixId": "post_URLPARAM6789"
+  }
+}
+

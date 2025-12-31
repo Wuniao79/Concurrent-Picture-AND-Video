@@ -1,0 +1,11 @@
+{
+  "name": "logs-only-no-video",
+  "input": "Generation Process Begins\nVideo Generation Progress: 45%\nQueueing: waiting for available slot",
+  "expected": {
+    "logsText": "Generation Process Begins\nVideo Generation Progress: 45%\nQueueing: waiting for available slot",
+    "videoSrc": null,
+    "fullHtml": null,
+    "remixId": null
+  }
+}
+

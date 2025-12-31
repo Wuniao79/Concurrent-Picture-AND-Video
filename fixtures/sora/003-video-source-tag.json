@@ -1,0 +1,11 @@
+{
+  "name": "video-source-tag-with-leading-log-line",
+  "input": "Video Generation Progress: 60%\n<video controls>\n  <source src=\"https://video.example/sora/playlist_222.m3u8?token=redacted\" type=\"application/x-mpegURL\" />\n</video>",
+  "expected": {
+    "logsText": "Video Generation Progress: 60%",
+    "videoSrc": "https://video.example/sora/playlist_222.m3u8?token=redacted",
+    "fullHtml": "Video Generation Progress: 60%\n<video controls>\n  <source src=\"https://video.example/sora/playlist_222.m3u8?token=redacted\" type=\"application/x-mpegURL\" />\n</video>",
+    "remixId": null
+  }
+}
+

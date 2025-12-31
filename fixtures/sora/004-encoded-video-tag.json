@@ -1,0 +1,11 @@
+{
+  "name": "encoded-video-tag-with-remix-id",
+  "input": "Video Generation Progress: 10%\n&lt;video src=&quot;https://video.example/sora/out_333.webm&quot;&gt;&lt;/video&gt;\nRemix ID: remix_QWERTY987",
+  "expected": {
+    "logsText": "Video Generation Progress: 10%",
+    "videoSrc": "https://video.example/sora/out_333.webm",
+    "fullHtml": "Video Generation Progress: 10%\n&lt;video src=&quot;https://video.example/sora/out_333.webm&quot;&gt;&lt;/video&gt;\nRemix ID: remix_QWERTY987",
+    "remixId": "remix_QWERTY987"
+  }
+}
+

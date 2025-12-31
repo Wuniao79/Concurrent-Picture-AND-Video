@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { generateResponse } from '../services/geminiService';
 import { ApiMode, GeminiImageSettings, LaneState, Model, ModelProvider, Role } from '../types';
 import { createDefaultLane, extractErrorCodeFromText, extractProgressFromText } from '../utils/lane';
+import { isVideoReadyFromText } from '../utils/isVideoReady';
 
 const normalizeModelIdValue = (value: unknown): string => {
   if (typeof value === 'string') return value;
@@ -535,9 +536,7 @@ export const useLanes = (options: UseLanesOptions) => {
 
                 const progress = extractProgressFromText(botMessageText);
                 const errorCode = extractErrorCodeFromText(botMessageText);
-                const hasVideoTag = /<video[^>]*src=['"][^'"]+['"][^>]*>/i.test(botMessageText);
-                const hasVideoUrl = /https?:\/\/[^\s'"]+\.mp4(\?|#|$)/i.test(botMessageText);
-                const videoReady = isSoraVideoModel && (hasVideoTag || hasVideoUrl);
+                const videoReady = isSoraVideoModel && isVideoReadyFromText(botMessageText);
                 const nextProgress = videoReady ? 100 : progress !== null ? progress : l.progress;
 
                 return {

@@ -1,6 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Download, Film, X } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Download, Film, Library, X } from 'lucide-react';
 import { Language } from '../../types';
+import { useAssetLibrary } from '../../hooks/useAssetLibrary';
+import { AssetPickerModal } from '../modals/AssetPickerModal';
+import { AssetNameModal } from '../modals/AssetNameModal';
+import { addAssetLibraryBlobItem } from '../../utils/assetLibrary';
 
 interface VideoFrameModalProps {
   isOpen: boolean;
@@ -21,11 +25,28 @@ export const VideoFrameModal: React.FC<VideoFrameModalProps> = ({ isOpen, langua
   const [error, setError] = useState<string | null>(null);
   const [firstFrame, setFirstFrame] = useState<FrameResult | null>(null);
   const [lastFrame, setLastFrame] = useState<FrameResult | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [saveDraft, setSaveDraft] = useState<{ blob: Blob; defaultName: string } | null>(null);
+  const [saveToast, setSaveToast] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const saveToastTimerRef = useRef<number | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoUrlRef = useRef<string | null>(null);
   const firstFrameRef = useRef<FrameResult | null>(null);
   const lastFrameRef = useRef<FrameResult | null>(null);
+  const { items } = useAssetLibrary();
+  const videoAssets = useMemo(() => items.filter((a) => a.kind === 'video'), [items]);
+
+  const safeRevoke = (url: string | null) => {
+    if (!url) return;
+    if (!url.startsWith('blob:')) return;
+    try {
+      URL.revokeObjectURL(url);
+    } catch {
+      // ignore
+    }
+  };
 
   useEffect(() => {
     videoUrlRef.current = videoUrl;
@@ -41,11 +62,24 @@ export const VideoFrameModal: React.FC<VideoFrameModalProps> = ({ isOpen, langua
 
   useEffect(() => {
     return () => {
-      if (videoUrlRef.current) URL.revokeObjectURL(videoUrlRef.current);
+      safeRevoke(videoUrlRef.current);
       if (firstFrameRef.current) URL.revokeObjectURL(firstFrameRef.current.url);
       if (lastFrameRef.current) URL.revokeObjectURL(lastFrameRef.current.url);
+      if (saveToastTimerRef.current) window.clearTimeout(saveToastTimerRef.current);
     };
   }, []);
+
+  const showSaveToast = (text: string, durationMs: number | null = 1500) => {
+    if (!text) return;
+    setSaveToast(text);
+    if (saveToastTimerRef.current) window.clearTimeout(saveToastTimerRef.current);
+    saveToastTimerRef.current = null;
+    if (durationMs == null || durationMs <= 0) return;
+    saveToastTimerRef.current = window.setTimeout(() => {
+      setSaveToast(null);
+      saveToastTimerRef.current = null;
+    }, durationMs);
+  };
 
   const resetFrames = () => {
     if (firstFrame) URL.revokeObjectURL(firstFrame.url);
@@ -56,11 +90,21 @@ export const VideoFrameModal: React.FC<VideoFrameModalProps> = ({ isOpen, langua
 
   const handleFile = (file: File) => {
     if (!file || !file.type.startsWith('video/')) return;
-    if (videoUrl) URL.revokeObjectURL(videoUrl);
+    safeRevoke(videoUrl);
     resetFrames();
     setDuration(null);
     setError(null);
     const url = URL.createObjectURL(file);
+    setVideoUrl(url);
+  };
+
+  const handlePickAsset = (src: string) => {
+    const url = (src || '').trim();
+    if (!url) return;
+    safeRevoke(videoUrl);
+    resetFrames();
+    setDuration(null);
+    setError(null);
     setVideoUrl(url);
   };
 
@@ -69,7 +113,7 @@ export const VideoFrameModal: React.FC<VideoFrameModalProps> = ({ isOpen, langua
     if (!video) return;
     if (video.duration > MAX_SECONDS) {
       setError(language === 'zh' ? '视频超过 30 秒，请上传更短的视频。' : 'Video exceeds 30 seconds.');
-      if (videoUrl) URL.revokeObjectURL(videoUrl);
+      safeRevoke(videoUrl);
       setVideoUrl(null);
       return;
     }
@@ -128,7 +172,7 @@ export const VideoFrameModal: React.FC<VideoFrameModalProps> = ({ isOpen, langua
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
-      <div className="w-[94%] max-w-4xl h-[78vh] bg-white/90 dark:bg-gray-900/90 border border-white/20 dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+      <div className="w-[94%] max-w-4xl h-[78vh] bg-white/90 dark:bg-gray-900/90 border border-gray-200/80 dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200/70 dark:border-white/10">
           <div className="flex items-center gap-3 text-gray-900 dark:text-white">
             <div className="h-9 w-9 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
@@ -170,12 +214,22 @@ export const VideoFrameModal: React.FC<VideoFrameModalProps> = ({ isOpen, langua
           >
             {language === 'zh' ? '上传视频' : 'Upload Video'}
           </button>
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            disabled={videoAssets.length === 0}
+            className="px-4 h-9 rounded-xl border border-gray-200/70 dark:border-white/10 bg-white/70 dark:bg-gray-800/60 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-100/70 dark:hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+          >
+            <Library size={16} />
+            {language === 'zh' ? '从素材库选取' : 'From Library'}
+          </button>
           {duration !== null && (
             <div className="text-xs text-gray-500 dark:text-gray-400">
               {language === 'zh' ? '时长' : 'Duration'}: {duration.toFixed(2)}s
             </div>
           )}
           {error && <div className="text-xs text-red-500">{error}</div>}
+          {saveToast && <div className="text-xs text-emerald-600 dark:text-emerald-400">{saveToast}</div>}
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -228,14 +282,25 @@ export const VideoFrameModal: React.FC<VideoFrameModalProps> = ({ isOpen, langua
                   {item.data ? (
                     <>
                       <img src={item.data.url} alt={item.label} className="w-full rounded-lg border border-gray-200/70 dark:border-white/10" />
-                      <button
-                        type="button"
-                        onClick={() => downloadFrame(item.data!, `frame_${item.name}.png`)}
-                        className="mt-3 h-8 px-3 rounded-lg border border-gray-200/70 dark:border-white/10 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-100/70 dark:hover:bg-white/5 inline-flex items-center gap-2"
-                      >
-                        <Download size={12} />
-                        {language === 'zh' ? '下载' : 'Download'}
-                      </button>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => downloadFrame(item.data!, `frame_${item.name}.png`)}
+                          className="h-8 px-3 rounded-lg border border-gray-200/70 dark:border-white/10 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-100/70 dark:hover:bg-white/5 inline-flex items-center gap-2"
+                        >
+                          <Download size={12} />
+                          {language === 'zh' ? '下载' : 'Download'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSaveDraft({ blob: item.data!.blob, defaultName: `frame_${item.name}_${Date.now()}` })}
+                          disabled={isSaving}
+                          className="h-8 px-3 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                        >
+                          <Library size={12} />
+                          {language === 'zh' ? '保存到素材库' : 'Save'}
+                        </button>
+                      </div>
                     </>
                   ) : (
                     <div className="h-24 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 flex items-center justify-center text-gray-400 text-xs">
@@ -248,6 +313,49 @@ export const VideoFrameModal: React.FC<VideoFrameModalProps> = ({ isOpen, langua
           </div>
         </div>
       </div>
+
+      <AssetPickerModal
+        isOpen={pickerOpen}
+        language={language}
+        assets={videoAssets}
+        kind="video"
+        title={language === 'zh' ? '从素材库选择视频' : 'Pick a video'}
+        onClose={() => setPickerOpen(false)}
+        onPick={(asset) => {
+          setPickerOpen(false);
+          handlePickAsset(asset.src);
+        }}
+      />
+
+      <AssetNameModal
+        isOpen={Boolean(saveDraft)}
+        language={language}
+        title={language === 'zh' ? '保存到素材库' : 'Save to Library'}
+        defaultValue={saveDraft?.defaultName || ''}
+        onCancel={() => setSaveDraft(null)}
+        onConfirm={(name) => {
+          const draft = saveDraft;
+          if (!draft) return;
+          setSaveDraft(null);
+          showSaveToast(language === 'zh' ? '正在保存…' : 'Saving…', null);
+          setIsSaving(true);
+          void (async () => {
+            try {
+              const safeName = (name || '').trim() || draft.defaultName || `frame_${Date.now()}`;
+              const created = await addAssetLibraryBlobItem({ kind: 'image', name: safeName, blob: draft.blob });
+              showSaveToast(created ? (language === 'zh' ? '已保存到素材库' : 'Saved') : language === 'zh' ? '保存失败' : 'Failed');
+            } catch (e: any) {
+              const msg = String(e?.message || e || '');
+              showSaveToast(
+                language === 'zh' ? `保存失败：${msg || '未知错误'}` : `Failed: ${msg || 'Unknown error'}`,
+                2200
+              );
+            } finally {
+              setIsSaving(false);
+            }
+          })();
+        }}
+      />
     </div>
   );
 };

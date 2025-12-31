@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
-import { Message, Role } from "../types";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AssetKind, Language, Message, Role } from "../types";
 import { Bot, User, ChevronRight } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -7,87 +7,27 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { fetchBlobWithProxy } from "../utils/download";
 import { buildImageCacheId, getImageCacheRecord, putImageCacheRecord } from "../utils/imageCache";
+import { parseSoraPayload } from "../utils/parseSoraPayload";
+import { isVideoReadyFromText } from "../utils/isVideoReady";
+import { addAssetLibraryBlobItem } from "../utils/assetLibrary";
+import { AssetNameModal } from "./modals/AssetNameModal";
+
+const EMPTY_SORA_PARSE = Object.freeze({
+  logsText: null as string | null,
+  videoSrc: null as string | null,
+  fullHtml: null as string | null,
+  remixId: null as string | null,
+});
 
 interface MessageBubbleProps {
   message: Message;
   fontSize?: number;
   assistantLabel?: string;
   showAssistantLabel?: boolean;
+  language?: Language;
   downloadProxyUrl?: string;
   cacheHistoryId?: string | null;
   cacheLaneId?: string | null;
-}
-
-/**
- * 解析 Sora 返回，拆出视频、日志、Remix ID。
- */
-function parseSoraPayload(text: string) {
-  const result: {
-    logsText: string | null;
-    videoSrc: string | null;
-    fullHtml: string | null;
-    remixId: string | null;
-  } = {
-    logsText: null,
-    videoSrc: null,
-    fullHtml: null,
-    remixId: null,
-  };
-
-  if (!text) return result;
-
-  const trimmed = text.trim();
-  result.fullHtml = trimmed;
-
-  const videoRegex =
-    /<video[^>]*src=['"]([^'"]+)['"][^>]*>(?:[\s\S]*?<\/video>)?|<video[^>]*src=['"]([^'"]+)['"][^>]*\/?>/i;
-  const videoMatch = trimmed.match(videoRegex);
-
-  if (videoMatch) {
-    const videoTag = videoMatch[0];
-    const videoSrc = videoMatch[1] || videoMatch[2] || null;
-    result.videoSrc = videoSrc;
-
-    const idx = trimmed.indexOf(videoTag);
-    if (idx > -1) {
-      const before = trimmed.slice(0, idx).trim();
-      result.logsText = before || null; // 进度/日志文本
-    }
-  }
-
-  const remixPatterns: RegExp[] = [
-    /Post ID\s*[:：]\s*([^\s<]+)/i,
-    /PostId\s*[:：]\s*([^\s<]+)/i,
-    /Remix ID\s*[:：]\s*([^\s<]+)/i,
-    /Remix\s*[:：]\s*([^\s<]+)/i,
-    /post_id\s*[:=]\s*["']?([A-Za-z0-9_-]+)["']?/i,
-    /postId\s*[:=]\s*["']?([A-Za-z0-9_-]+)["']?/i,
-    /data-post-id=["']([^"']+)["']/i,
-    /data-postid=["']([^"']+)["']/i,
-  ];
-  for (const pattern of remixPatterns) {
-    const match = trimmed.match(pattern);
-    if (match && match[1]) {
-      result.remixId = match[1];
-      break;
-    }
-  }
-
-  if (!result.videoSrc) {
-    const looksLikeSoraLogs =
-      /Generation Process Begins/i.test(trimmed) ||
-      /Video Generation Progress/i.test(trimmed);
-
-    if (looksLikeSoraLogs) {
-      result.logsText = trimmed;
-      result.fullHtml = null;
-    } else {
-      result.logsText = null;
-      result.fullHtml = null;
-    }
-  }
-
-  return result;
 }
 
 export const MessageBubble: React.FC<MessageBubbleProps> = ({
@@ -95,14 +35,48 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   fontSize = 16,
   assistantLabel,
   showAssistantLabel = false,
+  language = "zh",
   downloadProxyUrl,
   cacheHistoryId,
   cacheLaneId,
 }) => {
   const isUser = message.role === Role.USER;
   const [copiedRemix, setCopiedRemix] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [assetDraft, setAssetDraft] = useState<{ kind: AssetKind; src: string; defaultName: string } | null>(null);
+  const [assetToast, setAssetToast] = useState<string | null>(null);
+  const manualCopyInputRef = useRef<HTMLInputElement | null>(null);
   const shouldShowAssistantLabel = !isUser && showAssistantLabel && !!assistantLabel;
+  const fullText = message.text || "";
+  const assetToastTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (assetToastTimerRef.current) {
+        window.clearTimeout(assetToastTimerRef.current);
+        assetToastTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const showAssetToast = (text: string, durationMs: number | null = 1500) => {
+    if (!text) return;
+    setAssetToast(text);
+    if (assetToastTimerRef.current) window.clearTimeout(assetToastTimerRef.current);
+    assetToastTimerRef.current = null;
+    if (durationMs == null || durationMs <= 0) return;
+    assetToastTimerRef.current = window.setTimeout(() => {
+      setAssetToast(null);
+      assetToastTimerRef.current = null;
+    }, durationMs);
+  };
+
+  const openAddToLibrary = (kind: AssetKind, src: string, defaultName: string) => {
+    const safeSrc = (src || "").trim();
+    if (!safeSrc) return;
+    setAssetDraft({ kind, src: safeSrc, defaultName: (defaultName || "").trim() || "asset" });
+  };
 
   const extractMarkdownImages = (text: string) => {
     if (!text) return [] as string[];
@@ -281,9 +255,19 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     </div>
   );
 
-  const { logsText, videoSrc, fullHtml, remixId } = parseSoraPayload(
-    message.text
-  );
+  const shouldParseSora = useMemo(() => {
+    if (isUser) return false;
+    if (!fullText) return false;
+    if (isVideoReadyFromText(fullText)) return true;
+    return /Generation Process Begins|Video Generation Progress|Post\s*ID|Remix\s*ID|post_id|postId|data-post-id/i.test(
+      fullText
+    );
+  }, [isUser, fullText]);
+
+  const { logsText, videoSrc, fullHtml, remixId } = useMemo(() => {
+    if (!shouldParseSora) return EMPTY_SORA_PARSE;
+    return parseSoraPayload(fullText);
+  }, [shouldParseSora, fullText]);
 
   const durationSeconds =
     typeof message.generationDurationMs === "number"
@@ -291,18 +275,63 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       : null;
   const isVideoMessage = Boolean(videoSrc);
 
-  const handleCopyRemix = async () => {
+  const handleCopyRemix = useCallback(async () => {
     if (!remixId) return;
+    setCopyError(null);
     try {
       await navigator.clipboard.writeText(remixId);
       setCopiedRemix(true);
       setTimeout(() => setCopiedRemix(false), 1500);
     } catch (e) {
       console.error("Copy remix failed", e);
+      setCopyError("复制失败：请手动复制下方内容（可能未授予剪贴板权限）");
+      window.setTimeout(() => manualCopyInputRef.current?.select(), 30);
     }
-  };
+  }, [remixId]);
 
-  const fullText = message.text || "";
+  const [videoDownloading, setVideoDownloading] = useState(false);
+  const [videoDownloadError, setVideoDownloadError] = useState<string | null>(null);
+  const handleDownloadVideo = useCallback(async () => {
+    if (!videoSrc) return;
+    setVideoDownloadError(null);
+    setVideoDownloading(true);
+    try {
+      const blob = await fetchBlobWithProxy(videoSrc, downloadProxyUrl);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `video_${Date.now()}.mp4`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("下载视频失败:", err);
+      setVideoDownloadError("下载失败：可尝试打开原链接或检查代理/跨域限制");
+      try {
+        window.open(videoSrc, "_blank", "noopener,noreferrer");
+      } catch {
+        // ignore
+      }
+    } finally {
+      setVideoDownloading(false);
+    }
+  }, [videoSrc, downloadProxyUrl]);
+
+  const handleOpenSourceVideo = useCallback(() => {
+    if (!videoSrc) return;
+    const url = videoSrc.trim();
+    if (!url) return;
+
+    try {
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch {
+      try {
+        window.open(url, "_blank");
+      } catch {
+        // ignore
+      }
+    }
+  }, [videoSrc]);
+
   const messageImages =
     Array.isArray(message.images) && message.images.length > 0
       ? message.images.filter(Boolean)
@@ -392,45 +421,84 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             </details>
           )}
 
-          <video
-            src={videoSrc}
-            controls
-            className="w-full aspect-video max-h-[70vh] min-h-[220px] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm bg-black"
-          />
+           <video
+             src={videoSrc}
+             controls
+             className="w-full aspect-video max-h-[70vh] min-h-[220px] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm bg-black"
+           />
 
-          <div className="mt-2">
-            <button
-              onClick={async () => {
-                try {
-                  const response = await fetch(videoSrc);
-                  const blob = await response.blob();
-                  const url = window.URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `video_${Date.now()}.mp4`;
-                  a.click();
-                  window.URL.revokeObjectURL(url);
-                } catch (err) {
-                  console.error("下载视频失败:", err);
-                }
-              }}
-              className="px-3 py-1 bg-green-600 hover:bg-green-500 text-white text-xs rounded-md border border-green-700 shadow-sm"
-            >
-              下载视频
-            </button>
-          </div>
+              <div className="mt-2 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={handleDownloadVideo}
+                    disabled={videoDownloading}
+                    className={`px-3 py-1 text-white text-xs rounded-md border shadow-sm ${
+                      videoDownloading
+                        ? "bg-green-700 border-green-800 opacity-70 cursor-not-allowed"
+                        : "bg-green-600 hover:bg-green-500 border-green-700"
+                    }`}
+                  >
+                    {videoDownloading ? "下载中..." : "下载视频"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleOpenSourceVideo}
+                    className="px-3 py-1 text-white text-xs rounded-md border border-blue-700 shadow-sm bg-blue-600 hover:bg-blue-500"
+                  >
+                    源视频打开
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openAddToLibrary("video", videoSrc, `video_${Date.now()}`)}
+                    className="px-3 py-1 text-white text-xs rounded-md border border-purple-700 shadow-sm bg-purple-600 hover:bg-purple-500"
+                  >
+                    添加到素材库
+                  </button>
+                </div>
+                {videoDownloadError && (
+                  <div className="text-[11px] text-red-500 flex flex-wrap items-center gap-2">
+                    <span className="break-words">{videoDownloadError}</span>
+                    <button onClick={handleOpenSourceVideo} className="underline hover:text-red-400">
+                      打开原链接
+                    </button>
+                  </div>
+                )}
+                {assetToast && <div className="text-[11px] text-emerald-500">{assetToast}</div>}
+              </div>
 
           {(remixId || fullHtml) && (
             <div className="flex flex-col gap-2">
               {remixId && (
-                <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                  <span className="truncate">Post ID: {remixId}</span>
-                  <button
-                    onClick={handleCopyRemix}
-                    className="px-3 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium"
-                  >
-                    {copiedRemix ? "已复制" : "复制 Remix"}
-                  </button>
+                <div className="space-y-1 text-xs text-gray-500 dark:text-gray-400">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate">Post ID: {remixId}</span>
+                    <button
+                      onClick={handleCopyRemix}
+                      className="px-3 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium whitespace-nowrap"
+                    >
+                      {copiedRemix ? "已复制" : "复制 Remix"}
+                    </button>
+                  </div>
+                  {copyError && (
+                    <div className="text-[11px] text-red-500 space-y-1">
+                      <div>{copyError}</div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          ref={manualCopyInputRef}
+                          value={remixId}
+                          readOnly
+                          onFocus={(e) => e.currentTarget.select()}
+                          className="flex-1 min-w-0 px-2 py-1 rounded border border-red-200 dark:border-red-800 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200"
+                        />
+                        <button
+                          onClick={() => manualCopyInputRef.current?.select()}
+                          className="px-2 py-1 rounded border border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20"
+                        >
+                          选择
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -556,10 +624,18 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   >
                     下载图片 {labelIndex}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => openAddToLibrary("image", src, nameBase)}
+                    className="w-fit px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-md border border-blue-700 shadow-sm"
+                  >
+                    添加到素材库
+                  </button>
                 </div>
               );
             })}
           </div>
+          {assetToast && <div className="text-[11px] text-emerald-500">{assetToast}</div>}
         </div>
       );
     }
@@ -657,6 +733,32 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           </div>
         </div>
       )}
+
+      <AssetNameModal
+        isOpen={Boolean(assetDraft)}
+        language={language}
+        defaultValue={assetDraft?.defaultName || ""}
+        onCancel={() => setAssetDraft(null)}
+        onConfirm={(name) => {
+          const draft = assetDraft;
+          if (!draft) return;
+          setAssetDraft(null);
+          showAssetToast(language === 'zh' ? '正在保存到素材库…' : 'Saving to library…', null);
+          void (async () => {
+            try {
+              const blob = await fetchBlobWithProxy(draft.src, downloadProxyUrl);
+              const created = await addAssetLibraryBlobItem({ kind: draft.kind, name, blob });
+              showAssetToast(created ? (language === 'zh' ? '已添加到素材库' : 'Added to library') : language === 'zh' ? '添加失败' : 'Failed');
+            } catch (e: any) {
+              const msg = String(e?.message || e || '');
+              showAssetToast(
+                language === 'zh' ? `添加失败：${msg || '未知错误'}` : `Failed: ${msg || 'Unknown error'}`,
+                2200
+              );
+            }
+          })();
+        }}
+      />
     </div>
   );
 };

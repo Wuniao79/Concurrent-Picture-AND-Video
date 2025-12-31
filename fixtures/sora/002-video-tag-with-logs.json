@@ -1,0 +1,11 @@
+{
+  "name": "video-tag-with-logs-and-postid",
+  "input": "Generation Process Begins\nVideo Generation Progress: 30%\n<video src=\"https://video.example/sora/out_111.mp4\" controls></video>\nPost ID: post_ABCDEF123",
+  "expected": {
+    "logsText": "Generation Process Begins\nVideo Generation Progress: 30%",
+    "videoSrc": "https://video.example/sora/out_111.mp4",
+    "fullHtml": "Generation Process Begins\nVideo Generation Progress: 30%\n<video src=\"https://video.example/sora/out_111.mp4\" controls></video>\nPost ID: post_ABCDEF123",
+    "remixId": "post_ABCDEF123"
+  }
+}
+

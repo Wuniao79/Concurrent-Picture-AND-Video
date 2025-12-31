@@ -1,51 +1,108 @@
-import React, { useEffect, useRef } from 'react';
-import { LaneState, Model, Role } from '../types';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { LaneState, Language, Model, Role } from '../types';
 import { MessageBubble } from './MessageBubble';
 import { Loader2, X, Sparkles, MessageSquarePlus, EyeOff, Maximize2, Minimize2 } from 'lucide-react';
 
 interface ChatColumnProps {
-  lane: LaneState;
-  onRemove: (id: string) => void;
-  onModelChange: (id: string, model: string) => void;
-  isMultiLane: boolean;
-  fullWidth?: boolean;
-  isFullView?: boolean;
-  showPreviewToggle?: boolean;
-  isPreviewActive?: boolean;
-  onTogglePreview?: () => void;
-  downloadProxyUrl?: string;
-  cacheHistoryId?: string | null;
-  cacheLaneId?: string | null;
-  fontSize: number;
-  availableModels: Model[];
+	  lane: LaneState;
+	  onRemove: (id: string) => void;
+	  onModelChange: (id: string, model: string) => void;
+	  isMultiLane: boolean;
+	  fullWidth?: boolean;
+	  isFullView?: boolean;
+	  showPreviewToggle?: boolean;
+	  isPreviewActive?: boolean;
+	  onTogglePreview?: () => void;
+	  downloadProxyUrl?: string;
+	  cacheHistoryId?: string | null;
+	  cacheLaneId?: string | null;
+	  fontSize: number;
+	  availableModels: Model[];
+	  language?: Language;
+	  laneIndex?: number;
+	  concurrencyIntervalSec?: number;
+	  queueStartAt?: number | null;
 }
 
 export const ChatColumn: React.FC<ChatColumnProps> = ({
-  lane,
-  onRemove,
-  onModelChange,
-  isMultiLane,
-  fullWidth,
-  isFullView,
-  showPreviewToggle,
-  isPreviewActive,
-  onTogglePreview,
-  downloadProxyUrl,
-  cacheHistoryId,
-  cacheLaneId,
-  fontSize,
-  availableModels,
-}) => {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const fullViewMode = Boolean(isFullView);
-  const showHeader = !fullViewMode || showPreviewToggle;
-  const currentModel = availableModels.find((m) => m.id === lane.model) || availableModels[0];
+	  lane,
+	  onRemove,
+	  onModelChange,
+	  isMultiLane,
+	  fullWidth,
+	  isFullView,
+	  showPreviewToggle,
+	  isPreviewActive,
+	  onTogglePreview,
+	  downloadProxyUrl,
+	  cacheHistoryId,
+	  cacheLaneId,
+	  fontSize,
+	  availableModels,
+	  language,
+	  laneIndex,
+	  concurrencyIntervalSec,
+	  queueStartAt,
+	}) => {
+	  const scrollRef = useRef<HTMLDivElement>(null);
+	  const fullViewMode = Boolean(isFullView);
+	  const showHeader = !fullViewMode || showPreviewToggle;
+	  const currentModel = availableModels.find((m) => m.id === lane.model) || availableModels[0];
+	  const interval = typeof concurrencyIntervalSec === 'number' && Number.isFinite(concurrencyIntervalSec) ? concurrencyIntervalSec : 0;
+	  const scheduledAt = useMemo(() => {
+	    if (typeof laneIndex !== 'number' || laneIndex < 1 || interval <= 0 || typeof queueStartAt !== 'number') return 0;
+	    return queueStartAt + laneIndex * interval * 1000;
+	  }, [laneIndex, interval, queueStartAt]);
+	  const [now, setNow] = useState(() => Date.now());
 
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [lane.messages, lane.isThinking]);
+	  useEffect(() => {
+	    if (scrollRef.current) {
+	      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+	    }
+	  }, [lane.messages, lane.isThinking]);
+
+	  useEffect(() => {
+	    if (!scheduledAt || scheduledAt <= Date.now()) return;
+	    setNow(Date.now());
+	    const timer = window.setInterval(() => {
+	      const tick = Date.now();
+	      setNow(tick);
+	      if (tick >= scheduledAt) {
+	        window.clearInterval(timer);
+	      }
+	    }, 1000);
+	    return () => window.clearInterval(timer);
+	  }, [scheduledAt]);
+
+	  const remainingMs = scheduledAt > 0 ? scheduledAt - now : 0;
+	  const showQueue = remainingMs > 0;
+	  const formatClockTime = (timestamp: number) => {
+	    const locale = language === 'zh' || language === 'system' ? 'zh-CN' : 'en-US';
+	    try {
+	      return new Date(timestamp).toLocaleTimeString(locale, { hour12: false });
+	    } catch {
+	      return '';
+	    }
+	  };
+	  const formatRemaining = (ms: number) => {
+	    const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+	    const minutes = Math.floor(totalSeconds / 60);
+	    const seconds = totalSeconds % 60;
+	    if (minutes > 0) return `${minutes}m${String(seconds).padStart(2, '0')}s`;
+	    return `${seconds}s`;
+	  };
+	  const queuedLabel = showQueue
+	    ? `${language === 'zh' || language === 'system' ? '预计' : 'ETA'} ${formatClockTime(
+	        scheduledAt
+	      )} (${formatRemaining(remainingMs)})`
+	    : '';
+
+	  const lastModelMsg = [...lane.messages].reverse().find((m) => m.role === Role.MODEL);
+	  const awaitingFirstChunk = Boolean(lane.isThinking && lastModelMsg && !(lastModelMsg.text || '').trim());
+	  const baseStartAt =
+	    scheduledAt > 0 ? scheduledAt : typeof queueStartAt === 'number' && Number.isFinite(queueStartAt) ? queueStartAt : 0;
+	  const waitingMs = baseStartAt > 0 ? now - baseStartAt : 0;
+	  const showPendingHint = Boolean(awaitingFirstChunk && !showQueue && waitingMs >= 8000);
 
   // Check if the latest user message has an image but the model doesn't support vision
   const latestUserMsg = [...lane.messages].reverse().find(m => m.role === Role.USER);
@@ -145,6 +202,7 @@ export const ChatColumn: React.FC<ChatColumnProps> = ({
             fontSize={fullViewMode && msg.role === Role.MODEL ? Math.max(12, fontSize - 2) : fontSize}
             assistantLabel={assistantLabel}
             showAssistantLabel={fullViewMode && msg.role === Role.MODEL}
+            language={language}
             downloadProxyUrl={downloadProxyUrl}
             cacheHistoryId={cacheHistoryId}
             cacheLaneId={cacheLaneId}
@@ -158,17 +216,37 @@ export const ChatColumn: React.FC<ChatColumnProps> = ({
              </div>
         )}
 
-        {/* Thinking Indicator */}
-        {lane.isThinking && (
-          <div className="flex justify-start w-full">
-             <div className="flex items-center gap-3 px-4 py-3">
-                <div className="w-6 h-6 flex items-center justify-center bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full shadow-sm">
-                   <Loader2 size={14} className="animate-spin text-brand-600" />
-                </div>
-                <span className="text-sm text-gray-400 animate-pulse">Generating...</span>
-             </div>
-          </div>
-        )}
+	        {/* Thinking Indicator */}
+	        {lane.isThinking && (
+	          <div className="flex justify-start w-full">
+	             <div className="flex items-center gap-3 px-4 py-3">
+	                <div className="w-6 h-6 flex items-center justify-center bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full shadow-sm">
+	                   <Loader2 size={14} className="animate-spin text-brand-600" />
+	                </div>
+	                <div className="flex flex-col min-w-0">
+	                  <span className="text-sm text-gray-400 animate-pulse">
+	                    {showQueue
+	                      ? language === 'zh' || language === 'system'
+	                        ? '排队中...'
+	                        : 'Queued...'
+	                      : language === 'zh' || language === 'system'
+	                      ? '生成中...'
+	                      : 'Generating...'}
+	                  </span>
+	                  {queuedLabel && (
+	                    <span className="text-[10px] text-gray-400 truncate block">{queuedLabel}</span>
+	                  )}
+	                  {showPendingHint && (
+	                    <span className="text-[10px] text-gray-400 truncate block">
+	                      {language === 'zh' || language === 'system'
+	                        ? '长时间无输出：可能被浏览器/中转并发限制排队'
+	                        : 'No output yet: may be queued by browser/proxy connection limits'}
+	                    </span>
+	                  )}
+	                </div>
+	             </div>
+	          </div>
+	        )}
 
         {/* Error Display */}
         {lane.error && (

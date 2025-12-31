@@ -1,0 +1,11 @@
+{
+  "name": "html-with-data-post-id-and-no-video",
+  "input": "<div data-post-id=\"post_DATAATTR111\">Remix</div>",
+  "expected": {
+    "logsText": null,
+    "videoSrc": null,
+    "fullHtml": null,
+    "remixId": "post_DATAATTR111"
+  }
+}
+

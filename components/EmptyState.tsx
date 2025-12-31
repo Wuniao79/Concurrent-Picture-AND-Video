@@ -55,8 +55,8 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ language, onOpenTool }) 
             disabled={!card.enabled}
             className={`p-5 rounded-2xl text-left transition-colors h-40 flex flex-col justify-between group border ${
               card.enabled
-                ? 'bg-gray-100/50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 border-transparent hover:border-gray-200 dark:hover:border-gray-700'
-                : 'bg-gray-100/30 dark:bg-gray-800/30 border-transparent opacity-60 cursor-default'
+                ? 'bg-gray-100/50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 border-gray-200/70 dark:border-gray-700/60 hover:border-gray-300 dark:hover:border-gray-600'
+                : 'bg-gray-100/30 dark:bg-gray-800/30 border-gray-200/50 dark:border-gray-800/60 opacity-60 cursor-default'
             }`}
           >
             <div>

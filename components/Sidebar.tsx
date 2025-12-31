@@ -23,6 +23,8 @@ interface SidebarProps {
   availableModels: Model[];
   downloadProxyUrl?: string;
   cacheHistoryId?: string | null;
+  concurrencyIntervalSec?: number;
+  queueStartAt?: number | null;
   onStartNewChat: () => void;
   onRemoveLane: (id: string) => void;
   onModelChange: (id: string, model: string) => void;
@@ -46,6 +48,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   availableModels,
   downloadProxyUrl,
   cacheHistoryId,
+  concurrencyIntervalSec,
+  queueStartAt,
   onStartNewChat,
   onRemoveLane,
   onModelChange,
@@ -209,6 +213,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const showNewChatHeader = showHistory || !isGridMode || !activeLane;
+  const activeLaneIndex = useMemo(() => {
+    if (!activeLane) return -1;
+    return lanes.findIndex((l) => l.id === activeLane.id);
+  }, [activeLane, lanes]);
 
   return (
     <div
@@ -329,19 +337,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </>
       ) : isGridMode && activeLane ? (
-          <div className="flex-1 overflow-hidden relative flex flex-col">
-            <ChatColumn
-              lane={activeLane}
-              onRemove={onRemoveLane}
-              onModelChange={onModelChange}
-              isMultiLane={false}
-              downloadProxyUrl={downloadProxyUrl}
-              cacheHistoryId={cacheHistoryId}
-              cacheLaneId={activeLane?.id || null}
-              fontSize={fontSize - 1}
-              availableModels={availableModels}
-            />
-          </div>
+	          <div className="flex-1 overflow-hidden relative flex flex-col">
+	            <ChatColumn
+	              lane={activeLane}
+	              onRemove={onRemoveLane}
+	              onModelChange={onModelChange}
+	              isMultiLane={false}
+	              language={language}
+	              laneIndex={activeLaneIndex}
+	              concurrencyIntervalSec={concurrencyIntervalSec}
+	              queueStartAt={queueStartAt}
+	              downloadProxyUrl={downloadProxyUrl}
+	              cacheHistoryId={cacheHistoryId}
+	              cacheLaneId={activeLane?.id || null}
+	              fontSize={fontSize - 1}
+	              availableModels={availableModels}
+	            />
+	          </div>
       ) : (
         <div className="flex-1 flex items-center justify-center text-gray-400 text-sm p-4 text-center">
           <p>{language === 'zh' ? '选择模型查看对话' : 'Select a model to view chat here.'}</p>

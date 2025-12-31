@@ -17,6 +17,7 @@ import {
   Settings,
   Search,
   Sparkles,
+  Library,
   Sun,
   Star,
   Trash2,
@@ -27,6 +28,7 @@ import { ApiMode, Language, Model, ModelModality, ModelProvider, RoleCardItem, T
 import { RelaySite, GeminiKeySite } from '../hooks/useSettings';
 import { v4 as uuidv4 } from 'uuid';
 import { generateResponse } from '../services/geminiService';
+import { AssetLibraryPanel } from './AssetLibraryPanel';
 
 const readImageAsDataUrl = (file: File, maxSize = 512, quality = 0.82) =>
   new Promise<string | null>((resolve) => {
@@ -71,6 +73,8 @@ interface SettingsModalProps {
   setFontSize: (s: number) => void;
   downloadProxyUrl: string;
   setDownloadProxyUrl: (v: string) => void;
+  timelineAudioSplitEnabled: boolean;
+  setTimelineAudioSplitEnabled: (v: boolean) => void;
   concurrencyIntervalSec: number;
   setConcurrencyIntervalSec: (v: number) => void;
   isStreamEnabled: boolean;
@@ -152,6 +156,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   setFontSize,
   downloadProxyUrl,
   setDownloadProxyUrl,
+  timelineAudioSplitEnabled,
+  setTimelineAudioSplitEnabled,
   concurrencyIntervalSec,
   setConcurrencyIntervalSec,
   isStreamEnabled,
@@ -248,7 +254,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const [activeTab, setActiveTab] = useState<
-    'interface' | 'models' | 'apikey' | 'data' | 'sora2api' | 'roleCards' | 'about' | 'dev'
+    'interface' | 'models' | 'apikey' | 'data' | 'assets' | 'sora2api' | 'roleCards' | 'about' | 'dev'
   >('interface');
 
   useEffect(() => {
@@ -869,7 +875,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     e.preventDefault();
   };
 
-  const APP_VERSION = 'V4.0-v1';
+  const APP_VERSION = 'v4.2';
 
   const handleCopyVersionHover = async () => {
     try {
@@ -1235,6 +1241,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     { id: 'models', label: t('模型', 'Models'), icon: <Cpu size={18} /> },
     { id: 'apikey', label: 'API Key', icon: <KeyRound size={18} /> },
     { id: 'data', label: t('数据', 'Data'), icon: <Database size={18} /> },
+    { id: 'assets', label: t('素材库', 'Assets'), icon: <Library size={18} /> },
     ...(sora2piEnabled ? [{ id: 'sora2api', label: t('Sora2api模型', 'Sora2api Models'), icon: <Sparkles size={18} /> }] : []),
     { id: 'roleCards', label: t('角色卡/提示词', 'Role Cards/Prompts'), icon: <AtSign size={18} /> },
     { id: 'about', label: t('关于', 'About'), icon: <Info size={18} /> },
@@ -1895,6 +1902,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <div
                         className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-300 ${
                           historyButtonEnabled ? 'translate-x-5' : ''
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between py-2">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-sm text-gray-700 dark:text-gray-200">
+                        {t('视频音频拆分', 'Split video audio')}
+                      </span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-pre-line">
+                        {t('在快捷时间线中显示独立音频轨道，导出音频以音频轨道为准。', 'Shows an audio lane in Quick Timeline; export audio follows the audio lane.')}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setTimelineAudioSplitEnabled(!timelineAudioSplitEnabled)}
+                      className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
+                        timelineAudioSplitEnabled ? 'bg-gray-700 dark:bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'
+                      }`}
+                    >
+                      <div
+                        className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-300 ${
+                          timelineAudioSplitEnabled ? 'translate-x-5' : ''
                         }`}
                       />
                     </button>
@@ -2955,6 +2985,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   {t('清空 LocalStorage', 'Clear LocalStorage')}
                 </button>
               </div>
+            </div>
+          )}
+
+          {activeTab === 'assets' && (
+            <div className="max-w-4xl">
+              <AssetLibraryPanel language={language} onToast={showToast} />
             </div>
           )}
 

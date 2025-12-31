@@ -6,7 +6,7 @@
 export type ApiMode = 'openai' | 'gemini';
 export type ThemeMode = 'system' | 'light' | 'dark';
 export type Language = 'system' | 'en' | 'zh';
-export type ToolView = 'promptLibrary' | 'slicer' | 'videoFrames' | 'xhs' | 'more';
+export type ToolView = 'promptLibrary' | 'slicer' | 'videoFrames' | 'xhs' | 'timeline' | 'more';
 export type GeminiResolution = '1K' | '2K' | '4K';
 export type GeminiAspectRatio =
   | 'auto'
@@ -39,6 +39,17 @@ export interface Message {
   /** Single generation latency in milliseconds; set on model replies. */
   generationDurationMs?: number;
 }
+
+export type AssetKind = 'image' | 'video';
+
+export type AssetLibraryItem = {
+  id: string;
+  kind: AssetKind;
+  name: string;
+  src: string;
+  createdAt: number;
+  updatedAt: number;
+};
 
 export type ModelProvider = 'openai' | 'gemini';
 export type ModelModality = 'text' | 'image' | 'video';

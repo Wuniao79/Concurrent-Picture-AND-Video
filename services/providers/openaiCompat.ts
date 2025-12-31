@@ -232,6 +232,81 @@ export const generateOpenAICompatibleResponse = async ({
   const decoder = new TextDecoder('utf-8');
   let buffer = '';
 
+  const parseSseEventDataLines = (event: string): string[] => {
+    const dataLines: string[] = [];
+    const lines = String(event || '').split('\n');
+    for (const raw of lines) {
+      const line = String(raw || '').replace(/\r/g, '');
+      const trimmedStart = line.trimStart();
+      if (!trimmedStart.startsWith('data:')) continue;
+      let data = trimmedStart.slice('data:'.length);
+      // SSE spec: if the first char is a space, ignore it.
+      if (data.startsWith(' ')) data = data.slice(1);
+      dataLines.push(data);
+    }
+    return dataLines;
+  };
+
+  const emitJsonOrText = (raw: string) => {
+    const dataStr = String(raw ?? '');
+    const candidate = dataStr.trim();
+    if (!candidate || candidate === '[DONE]') return;
+
+    const looksJson = candidate.startsWith('{') || candidate.startsWith('[');
+    if (!looksJson) {
+      onChunk(dataStr);
+      return;
+    }
+
+    let json: any = null;
+    try {
+      json = JSON.parse(candidate);
+    } catch {
+      // Some proxies may split JSON across multiple SSE data lines; fall back to emitting raw text.
+      onChunk(dataStr);
+      return;
+    }
+
+    let piece = '';
+    const choice = json?.choices?.[0];
+    const delta = choice?.delta || choice?.message || json.delta || json.message;
+    if (delta) {
+      piece += extractReasoningText(delta);
+      if (typeof delta.content === 'string') {
+        piece += delta.content;
+      } else if (delta.content) {
+        piece += extractTextFromContent(delta.content);
+      }
+      if (typeof (delta as any).message === 'string') piece += ((piece ? '\n' : '') + (delta as any).message);
+      if (typeof (delta as any).status_text === 'string')
+        piece += ((piece ? '\n' : '') + (delta as any).status_text);
+      if (typeof (delta as any).log === 'string') piece += ((piece ? '\n' : '') + (delta as any).log);
+      if (typeof (delta as any).thinking === 'string') piece += ((piece ? '\n' : '') + (delta as any).thinking);
+    }
+    if (!piece) {
+      if (typeof json.message === 'string') {
+        piece = json.message;
+      } else if (typeof json.status_text === 'string') {
+        piece = json.status_text;
+      } else if (typeof json.log === 'string') {
+        piece = json.log;
+      } else if (typeof json.thinking === 'string') {
+        piece = json.thinking;
+      } else if (json?.choices?.[0]?.message) {
+        const m = json.choices[0].message;
+        let t = extractTextFromContent(m.content);
+        const r = extractReasoningText(m);
+        if (r) t += (t ? '\n' : '') + r;
+        piece = t;
+      } else {
+        piece = collectDeepText(json);
+      }
+    }
+    if (piece) {
+      onChunk(piece);
+    }
+  };
+
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
@@ -241,63 +316,33 @@ export const generateOpenAICompatibleResponse = async ({
     const events = buffer.split('\n\n');
     buffer = events.pop() || '';
     for (const event of events) {
-      const lines = event.split('\n').map((l) => l.trim());
-      for (const line of lines) {
-        if (!line || !line.startsWith('data:')) continue;
-        const dataStr = line.slice('data:'.length).trim();
-        if (!dataStr || dataStr === '[DONE]') continue;
-        // Some proxies stream plain-text SSE (e.g. Sora logs). Treat non-JSON payloads as text.
-        const looksJson = dataStr.startsWith('{') || dataStr.startsWith('[');
-        let json: any = null;
-        if (looksJson) {
+      const dataLines = parseSseEventDataLines(event);
+      if (dataLines.length === 0) continue;
+
+      // Prefer treating one SSE event as one logical chunk (SSE spec joins multiple data lines with \n).
+      const combined = dataLines.join('\n');
+      const combinedCandidate = combined.trim();
+
+      // If the combined payload isn't valid JSON but each line looks like JSON, keep legacy behavior.
+      if (
+        dataLines.length > 1 &&
+        (combinedCandidate.startsWith('{') || combinedCandidate.startsWith('[')) &&
+        !(() => {
           try {
-            json = JSON.parse(dataStr);
+            JSON.parse(combinedCandidate);
+            return true;
           } catch {
-            continue;
+            return false;
           }
-        } else {
-          onChunk(dataStr);
-          continue;
+        })()
+      ) {
+        for (const line of dataLines) {
+          emitJsonOrText(line);
         }
-        let piece = '';
-        const choice = json?.choices?.[0];
-        const delta = choice?.delta || choice?.message || json.delta || json.message;
-        if (delta) {
-          piece += extractReasoningText(delta);
-          if (typeof delta.content === 'string') {
-            piece += delta.content;
-          } else if (delta.content) {
-            piece += extractTextFromContent(delta.content);
-          }
-          if (typeof (delta as any).message === 'string') piece += ((piece ? '\n' : '') + (delta as any).message);
-          if (typeof (delta as any).status_text === 'string')
-            piece += ((piece ? '\n' : '') + (delta as any).status_text);
-          if (typeof (delta as any).log === 'string') piece += ((piece ? '\n' : '') + (delta as any).log);
-          if (typeof (delta as any).thinking === 'string') piece += ((piece ? '\n' : '') + (delta as any).thinking);
-        }
-        if (!piece) {
-          if (typeof json.message === 'string') {
-            piece = json.message;
-          } else if (typeof json.status_text === 'string') {
-            piece = json.status_text;
-          } else if (typeof json.log === 'string') {
-            piece = json.log;
-          } else if (typeof json.thinking === 'string') {
-            piece = json.thinking;
-          } else if (json?.choices?.[0]?.message) {
-            const m = json.choices[0].message;
-            let t = extractTextFromContent(m.content);
-            const r = extractReasoningText(m);
-            if (r) t += (t ? '\n' : '') + r;
-            piece = t;
-          } else {
-            piece = collectDeepText(json);
-          }
-        }
-        if (piece) {
-          onChunk(piece);
-        }
+        continue;
       }
+
+      emitJsonOrText(combined);
     }
   }
 };

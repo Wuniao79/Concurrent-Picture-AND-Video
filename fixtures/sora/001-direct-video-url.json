@@ -1,0 +1,11 @@
+{
+  "name": "direct-video-url-with-logs-and-postid",
+  "input": "Video Generation Progress: 90%\nhttps://video.example/sora/out_abc123.mp4?token=redacted&post_id=post_XYZ789\nPost ID: post_XYZ789",
+  "expected": {
+    "logsText": "Video Generation Progress: 90%\nPost ID: post_XYZ789",
+    "videoSrc": "https://video.example/sora/out_abc123.mp4?token=redacted&post_id=post_XYZ789",
+    "fullHtml": null,
+    "remixId": "post_XYZ789"
+  }
+}
+

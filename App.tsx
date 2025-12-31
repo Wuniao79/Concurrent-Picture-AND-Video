@@ -10,6 +10,7 @@ import { TopBar } from './components/TopBar';
 import { PromptLibraryModal } from './components/tools/PromptLibraryModal';
 import { ImageSlicerModal } from './components/tools/ImageSlicerModal';
 import { VideoFrameModal } from './components/tools/VideoFrameModal';
+import { QuickTimelineModal } from './components/tools/QuickTimelineModal';
 import { XhsLabModal } from './components/tools/XhsLabModal';
 import { GeminiImagePanel } from './components/GeminiImagePanel';
 import { useSettings } from './hooks/useSettings';
@@ -21,6 +22,7 @@ import { createDefaultLane } from './utils/lane';
 import { safeStorageGet, safeStorageSet } from './utils/storage';
 import { fetchBlobWithProxy } from './utils/download';
 import { buildImageCacheId, clearImageCache, deleteImageCacheByHistoryId, getImageCacheRecord, putImageCacheRecord } from './utils/imageCache';
+import { isVideoReadyFromText } from './utils/isVideoReady';
 import {
   loadDownloadDirectoryHandle,
   saveDownloadDirectoryHandle,
@@ -130,6 +132,8 @@ const App: React.FC = () => {
     setFontSize,
     downloadProxyUrl,
     setDownloadProxyUrl,
+    timelineAudioSplitEnabled,
+    setTimelineAudioSplitEnabled,
     concurrencyIntervalSec,
     setConcurrencyIntervalSec,
     isStreamEnabled,
@@ -260,9 +264,7 @@ const App: React.FC = () => {
       const laneHasVideoResult = (lane: LaneState) =>
         (lane.messages || []).some((m) => {
           if (m.role !== Role.MODEL || typeof m.text !== 'string') return false;
-          const text = m.text;
-          if (/<video[^>]*src=['"][^'"]+['"][^>]*>/i.test(text)) return true;
-          return /https?:\/\/[^\s'"]+\.mp4(\?|#|$)/i.test(text);
+          return isVideoReadyFromText(m.text);
         });
 
       const isVideoInFlight = (lane: LaneState) => {
@@ -472,6 +474,10 @@ const App: React.FC = () => {
   const showLanePreviewToggle = displayLanes.length > 1 && displayLanes.length <= 3;
   const activeLane = displayLanes.find((l) => l.id === displayActiveLaneId);
   const fullViewLane = activeLane || displayLanes[0];
+  const fullViewLaneIndex = useMemo(() => {
+    if (!fullViewLane?.id) return -1;
+    return displayLanes.findIndex((l) => l.id === fullViewLane.id);
+  }, [displayLanes, fullViewLane?.id]);
   const canEditDisplay = !isViewingHistory;
   const laneNavItems = useMemo(
     () =>
@@ -1542,6 +1548,8 @@ const App: React.FC = () => {
         setFontSize={setFontSize}
         downloadProxyUrl={downloadProxyUrl}
         setDownloadProxyUrl={setDownloadProxyUrl}
+        timelineAudioSplitEnabled={timelineAudioSplitEnabled}
+        setTimelineAudioSplitEnabled={setTimelineAudioSplitEnabled}
         concurrencyIntervalSec={concurrencyIntervalSec}
         setConcurrencyIntervalSec={setConcurrencyIntervalSec}
         isStreamEnabled={isStreamEnabled}
@@ -1623,6 +1631,8 @@ const App: React.FC = () => {
         availableModels={visibleModels}
         downloadProxyUrl={downloadProxyUrl}
         cacheHistoryId={cacheHistoryId}
+        concurrencyIntervalSec={concurrencyIntervalSec}
+        queueStartAt={queueStartAt}
         onStartNewChat={handleStartNewChat}
         onRemoveLane={removeLane}
         onModelChange={updateModel}
@@ -1753,22 +1763,26 @@ const App: React.FC = () => {
               <div className="flex-1 overflow-hidden relative">
                 {isFullView && fullViewLane ? (
                   <div className="h-full overflow-y-auto p-4 md:p-6">
-                    <ChatColumn
-                      lane={fullViewLane}
-                      onRemove={canEditDisplay ? removeLane : () => {}}
-                      onModelChange={canEditDisplay ? updateModel : () => {}}
-                      isMultiLane={false}
-                      fullWidth
-                      isFullView
-                      showPreviewToggle={showLanePreviewToggle}
-                      isPreviewActive={isFullView}
-                      onTogglePreview={() => handleLanePreviewToggle(fullViewLane.id)}
-                      downloadProxyUrl={downloadProxyUrl}
-                      cacheHistoryId={cacheHistoryId}
-                      cacheLaneId={fullViewLane.id}
-                      fontSize={fontSize}
-                      availableModels={visibleModels}
-                    />
+	                  <ChatColumn
+	                    lane={fullViewLane}
+	                    onRemove={canEditDisplay ? removeLane : () => {}}
+	                    onModelChange={canEditDisplay ? updateModel : () => {}}
+	                    isMultiLane={false}
+	                    fullWidth
+	                    isFullView
+	                    showPreviewToggle={showLanePreviewToggle}
+	                    isPreviewActive={isFullView}
+	                    onTogglePreview={() => handleLanePreviewToggle(fullViewLane.id)}
+	                    downloadProxyUrl={downloadProxyUrl}
+	                    cacheHistoryId={cacheHistoryId}
+	                    cacheLaneId={fullViewLane.id}
+	                    fontSize={fontSize}
+	                    language={language}
+	                    laneIndex={fullViewLaneIndex}
+	                    concurrencyIntervalSec={concurrencyIntervalSec}
+	                    queueStartAt={queueStartAt}
+	                    availableModels={visibleModels}
+	                  />
                   </div>
                 ) : isGridMode ? (
                   <div className="h-full p-6 overflow-y-auto">
@@ -1809,18 +1823,22 @@ const App: React.FC = () => {
                         }`}
                         onClick={() => setDisplayActiveLaneId(lane.id)}
                       >
-                        <ChatColumn
-                          lane={lane}
-                          onRemove={canEditDisplay ? removeLane : () => {}}
-                          onModelChange={canEditDisplay ? updateModel : () => {}}
-                          isMultiLane={displayLanes.length > 1}
-                          fontSize={fontSize}
-                          showPreviewToggle={showLanePreviewToggle}
-                          isPreviewActive={isFullView && fullViewLane?.id === lane.id}
-                          onTogglePreview={() => handleLanePreviewToggle(lane.id)}
-                          downloadProxyUrl={downloadProxyUrl}
-                          cacheHistoryId={cacheHistoryId}
-                          cacheLaneId={lane.id}
+	                        <ChatColumn
+	                          lane={lane}
+	                          onRemove={canEditDisplay ? removeLane : () => {}}
+	                          onModelChange={canEditDisplay ? updateModel : () => {}}
+	                          isMultiLane={displayLanes.length > 1}
+	                          fontSize={fontSize}
+	                          language={language}
+	                          laneIndex={idx}
+	                          concurrencyIntervalSec={concurrencyIntervalSec}
+	                          queueStartAt={queueStartAt}
+	                          showPreviewToggle={showLanePreviewToggle}
+	                          isPreviewActive={isFullView && fullViewLane?.id === lane.id}
+	                          onTogglePreview={() => handleLanePreviewToggle(lane.id)}
+	                          downloadProxyUrl={downloadProxyUrl}
+	                          cacheHistoryId={cacheHistoryId}
+	                          cacheLaneId={lane.id}
                           availableModels={visibleModels}
                         />
                       </div>
@@ -1901,6 +1919,13 @@ const App: React.FC = () => {
     <VideoFrameModal
       isOpen={activeTool === 'videoFrames'}
       language={language}
+      onClose={() => setActiveTool(null)}
+    />
+    <QuickTimelineModal
+      isOpen={activeTool === 'timeline'}
+      language={language}
+      downloadProxyUrl={downloadProxyUrl}
+      timelineAudioSplitEnabled={timelineAudioSplitEnabled}
       onClose={() => setActiveTool(null)}
     />
     <XhsLabModal

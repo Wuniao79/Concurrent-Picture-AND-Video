@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUp, Plus, X, Expand, Minimize2, Lock, Unlock, Building2, Shuffle, Download, Loader2, ChevronDown, ChevronUp, Sparkles, SlidersHorizontal, Image as ImageIcon, Film, LayoutGrid, Layers } from 'lucide-react';
-import { RoleCardItem, ToolView } from '../types';
+import { ArrowUp, Plus, X, Expand, Minimize2, Lock, Unlock, Building2, Shuffle, Download, Loader2, ChevronDown, ChevronUp, Sparkles, SlidersHorizontal, Image as ImageIcon, Film, LayoutGrid, Layers, Clapperboard, Library } from 'lucide-react';
+import { AssetLibraryItem, RoleCardItem, ToolView } from '../types';
+import { useAssetLibrary } from '../hooks/useAssetLibrary';
+import { AssetPickerModal } from './modals/AssetPickerModal';
 
 type InputTrigger = {
   type: '@' | '/';
@@ -102,14 +104,19 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [localCollapsed, setLocalCollapsed] = useState(false);
   const [isToolMenuOpen, setIsToolMenuOpen] = useState(false);
+  const [imagePickerOpen, setImagePickerOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toolMenuRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const suggestMenuRef = useRef<HTMLDivElement>(null);
+  const suggestListRef = useRef<HTMLDivElement>(null);
+  const activeSuggestionRef = useRef<HTMLButtonElement>(null);
   const [trigger, setTrigger] = useState<InputTrigger | null>(null);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
   const effectiveCollapsed = typeof isCollapsed === 'boolean' ? isCollapsed : localCollapsed;
   const t = (zh: string, en: string) => (language === 'zh' ? zh : en);
+  const { items } = useAssetLibrary();
+  const imageAssets = useMemo(() => items.filter((a) => a.kind === 'image'), [items]);
   const setCollapsed = (next: boolean) => {
     if (onCollapseChange) {
       onCollapseChange(next);
@@ -213,6 +220,26 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   }, [filteredSuggestions.length]);
 
   useEffect(() => {
+    if (!roleCardsEnabled || !trigger) return;
+    if (filteredSuggestions.length <= 0) return;
+    const container = suggestListRef.current;
+    const activeEl = activeSuggestionRef.current;
+    if (!container || !activeEl) return;
+
+    requestAnimationFrame(() => {
+      const containerRect = container.getBoundingClientRect();
+      const elRect = activeEl.getBoundingClientRect();
+      if (elRect.top < containerRect.top) {
+        container.scrollTop -= containerRect.top - elRect.top;
+        return;
+      }
+      if (elRect.bottom > containerRect.bottom) {
+        container.scrollTop += elRect.bottom - containerRect.bottom;
+      }
+    });
+  }, [activeSuggestionIndex, filteredSuggestions.length, roleCardsEnabled, trigger]);
+
+  useEffect(() => {
     if (!trigger) return;
     const handleClick = (event: MouseEvent) => {
       const target = event.target as Node;
@@ -311,12 +338,12 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
   };
 
-  const readFileAsDataUrl = (file: File) =>
+  const readFileAsDataUrl = (blob: Blob) =>
     new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result || ''));
       reader.onerror = () => reject(reader.error || new Error('Failed to read image'));
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(blob);
     });
 
   const loadImage = (src: string) =>
@@ -394,6 +421,31 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     return null;
   };
 
+  const getImageFromBlob = async (blob: Blob) => {
+    try {
+      const raw = await readFileAsDataUrl(blob);
+      const optimized = await optimizeImageDataUrl(raw);
+      return optimized;
+    } catch {
+      try {
+        const fallback = await readFileAsDataUrl(blob);
+        return fallback;
+      } catch {
+        // ignore
+      }
+    }
+    return null;
+  };
+
+  const appendSelectedImages = (nextImages: string[]) => {
+    if (nextImages.length === 0) return;
+    setSelectedImages((prev) => {
+      if (!moreImagesEnabled) return [nextImages[0]];
+      const merged = [...prev, ...nextImages];
+      return merged.slice(0, IMAGE_MAX_COUNT);
+    });
+  };
+
   const addImagesFromFiles = async (files: File[]) => {
     if (!files || files.length === 0) return;
 
@@ -412,11 +464,30 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
     if (nextImages.length === 0) return;
 
-    setSelectedImages((prev) => {
-      if (!moreImagesEnabled) return [nextImages[0]];
-      const merged = [...prev, ...nextImages];
-      return merged.slice(0, IMAGE_MAX_COUNT);
-    });
+    appendSelectedImages(nextImages);
+  };
+
+  const addImageFromAsset = async (asset: AssetLibraryItem) => {
+    if (!asset || asset.kind !== 'image') return;
+    const remainingSlots = moreImagesEnabled ? Math.max(0, IMAGE_MAX_COUNT - selectedImages.length) : 1;
+    if (remainingSlots <= 0) return;
+    const src = (asset.src || '').trim();
+    if (!src) return;
+    try {
+      if (src.startsWith('data:image/')) {
+        const optimized = await optimizeImageDataUrl(src);
+        appendSelectedImages([optimized]);
+        return;
+      }
+      const response = await fetch(src);
+      if (!response.ok) return;
+      const blob = await response.blob();
+      const dataUrl = await getImageFromBlob(blob);
+      if (!dataUrl) return;
+      appendSelectedImages([dataUrl]);
+    } catch {
+      // ignore
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -495,6 +566,10 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   };
 
   const widthClass = isExpanded ? '' : isMultiLaneLayout ? 'max-w-none' : 'max-w-6xl';
+  const canPickLibraryImage =
+    !inputDisabled &&
+    imageAssets.length > 0 &&
+    (moreImagesEnabled ? selectedImages.length < IMAGE_MAX_COUNT : selectedImages.length === 0);
 
   if (effectiveCollapsed) {
     const navItems = Array.isArray(laneNavItems) ? laneNavItems.slice(0, 20) : [];
@@ -574,7 +649,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
         <div className="relative rounded-[24px] p-[1px] bg-gradient-to-br from-blue-500/35 via-slate-500/10 to-emerald-500/25 shadow-[0_18px_50px_-30px_rgba(0,0,0,0.7)]">
           <div
-            className={`relative rounded-[23px] bg-white/80 text-gray-900 backdrop-blur-xl border border-white/60 dark:bg-[#0b1220]/75 dark:text-gray-100 dark:border-white/10 shadow-lg transition-all duration-200 focus-within:ring-2 focus-within:ring-blue-500/20 ${
+            className={`relative rounded-[23px] bg-white/80 text-gray-900 backdrop-blur-xl border border-gray-200/80 dark:bg-[#0b1220]/75 dark:text-gray-100 dark:border-white/10 shadow-lg transition-all duration-200 focus-within:ring-2 focus-within:ring-blue-500/20 ${
               isExpanded ? 'min-h-[320px]' : 'min-h-[88px]'
             }`}
           >
@@ -619,7 +694,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                     </span>
                     <span className="font-mono">{filteredSuggestions.length}</span>
                   </div>
-                  <div className="max-h-60 overflow-y-auto">
+                  <div ref={suggestListRef} className="max-h-60 overflow-y-auto">
                     {filteredSuggestions.length === 0 ? (
                       <div className="px-3 py-3 text-sm text-gray-500 dark:text-gray-400">
                         {t('没有匹配项', 'No matches')}
@@ -636,6 +711,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                           <button
                             key={item.id}
                             type="button"
+                            ref={isActive ? activeSuggestionRef : undefined}
                             onMouseDown={(e) => {
                               e.preventDefault();
                               applySuggestion(item);
@@ -727,6 +803,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                           { id: 'promptLibrary' as ToolView, label: language === 'zh' ? '图片提示词库' : 'Prompt Library', icon: Sparkles },
                           { id: 'slicer' as ToolView, label: language === 'zh' ? '图片分割工厂' : 'Image Slicer', icon: ImageIcon },
                           { id: 'videoFrames' as ToolView, label: language === 'zh' ? '提取视频首尾帧' : 'Video Frames', icon: Film },
+                          { id: 'timeline' as ToolView, label: language === 'zh' ? '快捷时间线' : 'Quick Timeline', icon: Clapperboard },
                           { id: 'xhs' as ToolView, label: language === 'zh' ? 'XHS 灵感实验室' : 'XHS Lab', icon: LayoutGrid },
                           { id: 'more' as ToolView, label: language === 'zh' ? '更多功能' : 'More', icon: Layers, disabled: true },
                         ].map((item) => (
@@ -801,7 +878,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                       <select
                         value={activeRelayId || ''}
                         onChange={(e) => onSelectRelay(e.target.value)}
-                        className="bg-transparent text-sm font-semibold text-gray-800 dark:text-gray-100 focus:outline-none cursor-pointer min-w-[88px]"
+                        className="h-8 bg-transparent text-sm font-semibold text-gray-800 dark:text-gray-100 focus:outline-none cursor-pointer min-w-[88px]"
                       >
                         <option value="" className="bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
                           {language === 'zh' ? '默认' : 'Default'}
@@ -818,6 +895,31 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                       </select>
                     </div>
                   )}
+
+                  <button
+                    type="button"
+                    onClick={() => setImagePickerOpen(true)}
+                    disabled={!canPickLibraryImage}
+                  className={`h-10 inline-flex items-center gap-2 px-4 rounded-xl border text-sm font-semibold transition-colors ${
+                    canPickLibraryImage
+                      ? 'bg-white/60 dark:bg-gray-900/40 text-gray-800 dark:text-gray-100 border-gray-200/70 dark:border-white/10 hover:bg-gray-100/70 dark:hover:bg-white/5'
+                      : 'bg-gray-200/80 dark:bg-white/5 text-gray-400 border-gray-200/60 dark:border-white/10 cursor-not-allowed'
+                  }`}
+                    aria-label={language === 'zh' ? '从素材库选取图片' : 'Pick image from library'}
+                    title={
+                      language === 'zh'
+                        ? canPickLibraryImage
+                          ? '从素材库选取图片'
+                          : '暂无可选图片或已达上限'
+                        : canPickLibraryImage
+                        ? 'Pick image from library'
+                        : 'No images or limit reached'
+                    }
+                  >
+                    <Library size={16} />
+                    <span className="hidden md:inline">{language === 'zh' ? '从素材库选取' : 'From Library'}</span>
+                    <span className="md:hidden">{language === 'zh' ? '素材库' : 'Library'}</span>
+                  </button>
 
                   {showKeyRotationButton && onToggleKeyRotation && (
                     <button
@@ -981,6 +1083,18 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           </div>
         </div>
       </div>
+      <AssetPickerModal
+        isOpen={imagePickerOpen}
+        language={language}
+        assets={imageAssets}
+        kind="image"
+        title={language === 'zh' ? '从素材库选择图片' : 'Pick images'}
+        onClose={() => setImagePickerOpen(false)}
+        onPick={(asset) => {
+          setImagePickerOpen(false);
+          void addImageFromAsset(asset);
+        }}
+      />
     </div>
   );
 };

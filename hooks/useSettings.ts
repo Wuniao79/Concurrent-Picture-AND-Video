@@ -58,6 +58,13 @@ export const useSettings = (options: UseSettingsOptions = {}) => {
     return safeStorageGet('sora_download_proxy_url') ?? '';
   });
 
+  const [timelineAudioSplitEnabled, setTimelineAudioSplitEnabled] = useState<boolean>(() => {
+    const stored = safeStorageGet('sora_timeline_audio_split');
+    if (stored === '1') return true;
+    if (stored === '0') return false;
+    return false;
+  });
+
   const [concurrencyIntervalSec, setConcurrencyIntervalSec] = useState(() => {
     const stored = safeStorageGet('sora_concurrency_interval_sec');
     const n = stored ? parseFloat(stored) : NaN;
@@ -332,6 +339,10 @@ export const useSettings = (options: UseSettingsOptions = {}) => {
   }, [downloadProxyUrl]);
 
   useEffect(() => {
+    safeStorageSet('sora_timeline_audio_split', timelineAudioSplitEnabled ? '1' : '0');
+  }, [timelineAudioSplitEnabled]);
+
+  useEffect(() => {
     safeStorageSet('sora_concurrency_interval_sec', String(concurrencyIntervalSec));
   }, [concurrencyIntervalSec]);
 
@@ -504,6 +515,8 @@ export const useSettings = (options: UseSettingsOptions = {}) => {
     setFontSize,
     downloadProxyUrl,
     setDownloadProxyUrl,
+    timelineAudioSplitEnabled,
+    setTimelineAudioSplitEnabled,
     concurrencyIntervalSec,
     setConcurrencyIntervalSec,
     isStreamEnabled,

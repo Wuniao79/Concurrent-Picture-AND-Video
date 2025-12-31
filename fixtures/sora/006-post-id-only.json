@@ -1,0 +1,11 @@
+{
+  "name": "post-id-only-no-video",
+  "input": "Post ID: post_ONLY12345",
+  "expected": {
+    "logsText": null,
+    "videoSrc": null,
+    "fullHtml": null,
+    "remixId": "post_ONLY12345"
+  }
+}
+
