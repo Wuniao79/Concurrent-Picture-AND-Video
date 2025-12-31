@@ -6,11 +6,12 @@
  
 ## 📸 界面概览
 
-<img width="2534" height="1300" alt="image" src="https://github.com/user-attachments/assets/df24b116-353e-4bd0-a258-e050c9fef64b" />
+<img width="2544" height="1336" alt="image" src="https://github.com/user-attachments/assets/42ebd0dc-2e9f-45f0-870a-88ab26b8f102" />
 
 
 
-<img width="2492" height="1276" alt="image" src="https://github.com/user-attachments/assets/ca8608e8-f84f-44e0-80b6-16ea1f47d687" />
+<img width="2544" height="1332" alt="image" src="https://github.com/user-attachments/assets/d8696647-26be-46fc-b623-0b51bb4e2558" />
+
 
 
 
@@ -39,7 +40,8 @@
 - ### ⚙️ 支持所有中转站、OpenAI和Gemini的视频、图片和文字模型  
 - ### 🔓 可自定义模型名称，无任何限制
 - ### ✍️ 自带并发历史，可多历史同时运行
-- ### 🎭 新增角色卡与提示词，无需反复复制角色ID与描述词
+- ### 🎭 角色卡与提示词，无需反复复制角色ID与描述词
+- ### 🏭 新增素材库与简易时间线，可快速筛选合适的视频并进一步优化
 - ### 🖼️ 提示词库，图片分割以及视频首尾帧提取
 - ### 🛡️ **全局提示 / 加载 / 进度条 / 错误处理**，整体体验更顺滑
 - ### 🌓 **明暗主题** - 护眼模式，随心切换
@@ -69,8 +71,12 @@
   - 🖼️ 单击图片进入灯箱预览（Lightbox），支持查看大图与细节
 
 ### **超多工具在线调用**
-  - 🏭自带图片分割工厂、提取视频首尾帧和XHS 灵感实验室等在线工具站
+  - 🏭图片分割工厂、提取视频首尾帧和XHS 灵感实验室等在线工具站
   - 💿未来会新增更多功能
+
+### **快速素材库和简易时间线**
+  - 🗃️可快速将视频保存在本地进行验收或保存图片进行首尾帧生成
+  - 🔐所有素材均本地保存，无任何泄露风险
 
 ### **📂角色卡与提示词库**
   - ✍️可自定义快捷角色和提示词，快速调用无需反复复制。
@@ -153,11 +159,13 @@ http://localhost:5015
 ##### 2025年12月19日： V3.4-v1 新增图片一键下载按钮，谷歌密钥轮询。修复了并发历史还存在的部分bug以及小细节UI优化。
 ##### 2025年12月23日： V3.9-v1 新增并发间隔、一键下载地址和图片分割工厂等快捷功能，以及UI方面小细节优化。
 ##### 2025年12月25日： V4.0-v1 新增角色卡与提示词和Sora2pi提示词选项。UI方面小细节优化和部分bug修复。
+##### 2025年12月31日： V4.2 新增素材库与简易时间线。UI方面小细节优化和部分bug修复。
 
 
 ---
-## 🛣️ Roadmap（3.1及未来版本计划）
+## 🛣️ Roadmap（未来版本计划）
 -  优化更多其他小细节优化
+-  增加图片分镜功能
 -  多人在线聊天室？（存疑）
 -  加入如的DeepSeek、魔塔等官方接口？（存疑）
 - ✅~~Sora2故事版功能~~
@@ -213,10 +221,6 @@ https://github.com/Tansuo2021/gemini-3-pro-image-preview
 - 本项目本质上只是一个 **API 调用客户端**，不提供任何 AI 模型本身。  
 - 请确保你的使用符合各个模型提供方（如 Google、OpenAI 等）的服务条款。  
 - 请勿使用本项目生成、传播违反法律法规或平台规范的内容。
-- 
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=Wuniao79/Concurrent-Picture-AND-Video&type=date&legend=top-left)](https://www.star-history.com/#Wuniao79/Concurrent-Picture-AND-Video&type=date&legend=top-left)
 ---
 
 
