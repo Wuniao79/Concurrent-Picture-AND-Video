@@ -291,6 +291,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const [roleCardAddOpen, setRoleCardAddOpen] = useState(false);
   const [roleCardsSearch, setRoleCardsSearch] = useState('');
+  const [roleCardsFilter, setRoleCardsFilter] = useState<'all' | 'role' | 'prompt'>('all');
   const [roleCardEditingId, setRoleCardEditingId] = useState<string | null>(null);
   const [roleCardDraftKind, setRoleCardDraftKind] = useState<'role' | 'prompt'>('role');
   const [roleCardDraftAlias, setRoleCardDraftAlias] = useState('');
@@ -301,6 +302,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [roleCardDraftError, setRoleCardDraftError] = useState('');
   const roleCardAvatarInputRef = useRef<HTMLInputElement>(null);
   const roleCardImportInputRef = useRef<HTMLInputElement>(null);
+  const modelImportInputRef = useRef<HTMLInputElement>(null);
   const [avatarCropOpen, setAvatarCropOpen] = useState(false);
   const [avatarCropSrc, setAvatarCropSrc] = useState<string | null>(null);
   const [avatarCropZoom, setAvatarCropZoom] = useState(1);
@@ -774,11 +776,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const filteredRoleCards = React.useMemo(() => {
+    const base =
+      roleCardsFilter === 'all'
+        ? roleCards
+        : roleCards.filter((item) => (roleCardsFilter === 'role' ? item.kind === 'role' : item.kind === 'prompt'));
     const normalizedRaw = roleCardsSearch.trim().toLowerCase();
     const normalized = normalizedRaw.replace(/^[@/]+/, '');
-    if (!normalizedRaw) return roleCards;
+    if (!normalizedRaw) return base;
 
-    return roleCards.filter((item) => {
+    return base.filter((item) => {
       const alias = (item.alias || '').toLowerCase();
       const note = (item.note || '').toLowerCase();
       const atId = (item.atId || '').toLowerCase();
@@ -796,7 +802,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
       return searchable.includes(normalizedRaw) || (normalized !== normalizedRaw && searchable.includes(normalized));
     });
-  }, [roleCards, roleCardsSearch, t]);
+  }, [roleCards, roleCardsFilter, roleCardsSearch, t]);
 
   useEffect(() => {
     setIntervalDraft(formatConcurrencyInterval(concurrencyIntervalSec));
@@ -875,7 +881,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     e.preventDefault();
   };
 
-  const APP_VERSION = 'v4.2';
+  const APP_VERSION = 'v4.3';
 
   const handleCopyVersionHover = async () => {
     try {
@@ -1129,6 +1135,89 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         (m) => !(m.id === id && (m.provider === 'gemini' ? 'gemini' : 'openai') === normalizedProvider)
       )
     );
+  };
+
+  const normalizeImportedModel = (raw: any): Model | null => {
+    if (!raw || typeof raw !== 'object') return null;
+    const id = String(raw.id || '').trim();
+    const name = String(raw.name || '').trim();
+    if (!id || !name) return null;
+    const provider: ModelProvider = raw.provider === 'gemini' ? 'gemini' : 'openai';
+    const modality: ModelModality =
+      raw.modality === 'image' || raw.modality === 'video' || raw.modality === 'text'
+        ? raw.modality
+        : resolveModelModality({ id, name, vision: Boolean(raw.vision), provider });
+    return {
+      id,
+      name,
+      vision: typeof raw.vision === 'boolean' ? raw.vision : true,
+      provider,
+      modality,
+      description: typeof raw.description === 'string' ? raw.description : undefined,
+    };
+  };
+
+  const handleExportModels = () => {
+    if (availableModels.length === 0) {
+      showToast(t('暂无可导出的模型', 'No models to export.'));
+      return;
+    }
+    const payload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      items: availableModels,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `models-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    showToast(t('已导出模型', 'Models exported.'));
+  };
+
+  const handleImportModels = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const rawItems = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.items) ? parsed.items : null;
+      if (!rawItems) {
+        showToast(t('导入失败：格式不正确', 'Import failed: invalid format.'));
+        return;
+      }
+      const imported = rawItems.map((item: any) => normalizeImportedModel(item)).filter(Boolean) as Model[];
+      if (imported.length === 0) {
+        showToast(t('没有可导入的模型', 'No valid models to import.'));
+        return;
+      }
+      const normalized = (provider?: ModelProvider) => (provider === 'gemini' ? 'gemini' : 'openai');
+      const next = [...availableModels];
+      imported.forEach((model) => {
+        const provider = normalized(model.provider);
+        const idx = next.findIndex(
+          (m) => m.id === model.id && (m.provider === 'gemini' ? 'gemini' : 'openai') === provider
+        );
+        if (idx === -1) {
+          next.push(model);
+        } else {
+          next[idx] = { ...next[idx], ...model };
+        }
+      });
+      setAvailableModels(next);
+      showToast(t(`已导入 ${imported.length} 个模型`, `Imported ${imported.length} models.`));
+    } catch {
+      showToast(t('导入失败，请检查文件', 'Import failed.'));
+    } finally {
+      if (modelImportInputRef.current) {
+        modelImportInputRef.current.value = '';
+      }
+    }
   };
 
   const openModelEditor = (model: Model) => {
@@ -2884,58 +2973,83 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </span>
                 </div>
               </div>
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">{t('默认下载目录', 'Default download folder')}</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  {t(
-                    '一键下载会在该目录下自动创建并发历史文件夹。',
-                    'Bulk download will create a concurrency history folder inside this directory.'
-                  )}
-                </p>
-                <div className="flex flex-wrap items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => void onPickDownloadDirectory()}
-                    disabled={!downloadDirectorySupported}
-                    title={
-                      downloadDirectorySupported
-                        ? t('选择默认下载文件夹', 'Pick a default download folder')
-                        : t('当前浏览器不支持文件夹选择', 'Folder picker is not supported')
-                    }
-                    className={`inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition-colors ${
-                      downloadDirectorySupported
-                        ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                        : 'bg-gray-300 dark:bg-gray-700 text-gray-600 dark:text-gray-400 cursor-not-allowed'
-                    }`}
-                  >
-                    {t('选择文件夹', 'Pick folder')}
-                  </button>
-                  {downloadDirectoryName && (
+              <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-4 items-start">
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">{t('默认下载目录', 'Default download folder')}</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    {t(
+                      '一键下载会在该目录下自动创建并发历史文件夹。',
+                      'Bulk download will create a concurrency history folder inside this directory.'
+                    )}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-3">
                     <button
                       type="button"
-                      onClick={() => void onClearDownloadDirectory()}
-                      className="inline-flex items-center px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/40 text-gray-700 dark:text-gray-200 text-sm font-medium hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+                      onClick={() => void onPickDownloadDirectory()}
+                      disabled={!downloadDirectorySupported}
+                      title={
+                        downloadDirectorySupported
+                          ? t('选择默认下载文件夹', 'Pick a default download folder')
+                          : t('当前浏览器不支持文件夹选择', 'Folder picker is not supported')
+                      }
+                      className={`inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition-colors ${
+                        downloadDirectorySupported
+                          ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                          : 'bg-gray-300 dark:bg-gray-700 text-gray-600 dark:text-gray-400 cursor-not-allowed'
+                      }`}
                     >
-                      {t('清除选择', 'Clear selection')}
+                      {t('选择文件夹', 'Pick folder')}
                     </button>
+                    {downloadDirectoryName && (
+                      <button
+                        type="button"
+                        onClick={() => void onClearDownloadDirectory()}
+                        className="inline-flex items-center px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/40 text-gray-700 dark:text-gray-200 text-sm font-medium hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+                      >
+                        {t('清除选择', 'Clear selection')}
+                      </button>
+                    )}
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      {downloadDirectoryName
+                        ? `${t('已选择：', 'Selected: ')}${downloadDirectoryName}`
+                        : t('未选择', 'Not selected')}
+                    </span>
+                  </div>
+                  {!downloadDirectorySupported && (
+                    <p className="text-xs text-amber-600 dark:text-amber-300">
+                      {t('请使用 Chrome/Edge 且通过 https/localhost 打开。', 'Use Chrome/Edge over https/localhost.')}
+                    </p>
                   )}
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    {downloadDirectoryName
-                      ? `${t('已选择：', 'Selected: ')}${downloadDirectoryName}`
-                      : t('未选择', 'Not selected')}
-                  </span>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {t(
-                    '浏览器不会暴露完整路径，仅显示文件夹名称。',
-                    'Browsers do not expose full paths; only folder names are shown.'
-                  )}
-                </p>
-                {!downloadDirectorySupported && (
-                  <p className="text-xs text-amber-600 dark:text-amber-300">
-                    {t('请使用 Chrome/Edge 且通过 https/localhost 打开。', 'Use Chrome/Edge over https/localhost.')}
+                <div className="space-y-3">
+                  <h3 className="text-lg font-semibold">{t('模型名称', 'Model Name')}</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    {t('用于导入/导出模型列表，方便迁移配置。', 'Import/export the model list for migration.')}
                   </p>
-                )}
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => modelImportInputRef.current?.click()}
+                      className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-900/40 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors whitespace-nowrap"
+                    >
+                      {t('导入模型', 'Import models')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleExportModels}
+                      className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-900/40 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors whitespace-nowrap"
+                    >
+                      {t('导出模型', 'Export models')}
+                    </button>
+                    <input
+                      ref={modelImportInputRef}
+                      type="file"
+                      accept="application/json"
+                      className="hidden"
+                      onChange={(e) => void handleImportModels(e.target.files)}
+                    />
+                  </div>
+                </div>
               </div>
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">{t('下载代理', 'Download proxy')}</h3>
@@ -3287,6 +3401,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
                 <div className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
                   {t('可搜：简称 / @ID / 备注 / 插入内容', 'Search: alias / @ID / note / insert')}
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {[
+                    { id: 'all', label: t('全部', 'All') },
+                    { id: 'role', label: t('角色', 'Role') },
+                    { id: 'prompt', label: t('提示词', 'Prompt') },
+                  ].map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setRoleCardsFilter(item.id as 'all' | 'role' | 'prompt')}
+                      className={`px-3 h-8 rounded-full text-xs font-semibold border transition-colors ${
+                        roleCardsFilter === item.id
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'bg-white/70 dark:bg-gray-800/60 border-gray-200/70 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:bg-gray-100/70 dark:hover:bg-white/5'
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
                 </div>
               </div>
 

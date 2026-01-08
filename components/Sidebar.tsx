@@ -1,7 +1,22 @@
-import React, { useMemo, useState } from 'react';
-import { PanelLeftClose, Plus, Search, Settings, MoreHorizontal, Edit2, Trash2 } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  PanelLeftClose,
+  Plus,
+  Search,
+  Settings,
+  MoreHorizontal,
+  Edit2,
+  Trash2,
+  Sparkles,
+  Image as ImageIcon,
+  Library,
+  Film,
+  Clapperboard,
+  LayoutGrid,
+  Layers,
+} from 'lucide-react';
 import { ChatColumn } from './ChatColumn';
-import { LaneState, Model, Language } from '../types';
+import { LaneState, Model, Language, ToolView } from '../types';
 import { LaneHistoryItem } from '../utils/history';
 
 const normalizeModelIdValue = (value: unknown): string => {
@@ -29,6 +44,7 @@ interface SidebarProps {
   onRemoveLane: (id: string) => void;
   onModelChange: (id: string, model: string) => void;
   onOpenSettings: () => void;
+  onOpenTool?: (tool: ToolView) => void;
   showHistory: boolean;
   historyList: LaneHistoryItem[];
   activeHistoryId: string | null;
@@ -53,7 +69,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onStartNewChat,
   onRemoveLane,
   onModelChange,
-  onOpenSettings,
+  onOpenSettings: _onOpenSettings,
+  onOpenTool,
   showHistory,
   historyList,
   activeHistoryId,
@@ -66,9 +83,52 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [draftName, setDraftName] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isToolMenuOpen, setIsToolMenuOpen] = useState(false);
+  const toolMenuRef = useRef<HTMLDivElement | null>(null);
 
   const normalizedSearch = searchTerm.trim().toLowerCase();
   const sevenDaysAgo = useMemo(() => Date.now() - 7 * 24 * 60 * 60 * 1000, []);
+  const toolCards = useMemo(
+    () => [
+      {
+        id: 'promptLibrary' as ToolView,
+        label: language === 'zh' ? '图片提示词库' : 'Prompt Library',
+        icon: Sparkles,
+      },
+      {
+        id: 'slicer' as ToolView,
+        label: language === 'zh' ? '图片分割工厂' : 'Image Slicer',
+        icon: ImageIcon,
+      },
+      {
+        id: 'storyboard' as ToolView,
+        label: language === 'zh' ? '分镜设计' : 'Storyboard Design',
+        icon: Library,
+      },
+      {
+        id: 'videoFrames' as ToolView,
+        label: language === 'zh' ? '提取视频首尾帧' : 'Video Frames',
+        icon: Film,
+      },
+      {
+        id: 'timeline' as ToolView,
+        label: language === 'zh' ? '快捷时间线' : 'Quick Timeline',
+        icon: Clapperboard,
+      },
+      {
+        id: 'xhs' as ToolView,
+        label: language === 'zh' ? 'XHS 灵感实验室' : 'XHS Lab',
+        icon: LayoutGrid,
+      },
+      {
+        id: 'more' as ToolView,
+        label: language === 'zh' ? '更多功能' : 'More',
+        icon: Layers,
+        disabled: true,
+      },
+    ],
+    [language]
+  );
 
   const startEdit = (item: LaneHistoryItem) => {
     setEditingId(item.id);
@@ -96,6 +156,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
     (item) => item.updatedAt >= sevenDaysAgo || item.createdAt >= sevenDaysAgo
   );
   const olderHistory = filteredHistory.filter((item) => !recentHistory.includes(item));
+
+  useEffect(() => {
+    if (!isToolMenuOpen) return;
+    const handleClick = (event: MouseEvent) => {
+      if (toolMenuRef.current && !toolMenuRef.current.contains(event.target as Node)) {
+        setIsToolMenuOpen(false);
+      }
+    };
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsToolMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [isToolMenuOpen]);
 
   const HistoryRow = (item: LaneHistoryItem) => {
     const isActive = item.id === activeHistoryId;
@@ -361,19 +439,48 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       <div className="p-3 border-t border-gray-200 dark:border-gray-800">
-        <button
-          onClick={onOpenSettings}
-          className="flex items-center gap-3 px-2 py-2 rounded-md hover:bg-gray-200/50 dark:hover:bg-gray-800 cursor-pointer w-full text-left transition-colors"
-        >
-          <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400">
-            <Settings size={18} />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              {language === 'zh' ? '工具' : 'Tools'}
-            </span>
-          </div>
-        </button>
+        <div className="relative" ref={toolMenuRef}>
+          <button
+            onClick={() => setIsToolMenuOpen((prev) => !prev)}
+            className="flex items-center gap-3 px-2 py-2 rounded-md hover:bg-gray-200/50 dark:hover:bg-gray-800 cursor-pointer w-full text-left transition-colors"
+            aria-label={language === 'zh' ? '工具' : 'Tools'}
+          >
+            <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400">
+              <Settings size={18} />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                {language === 'zh' ? '工具' : 'Tools'}
+              </span>
+            </div>
+          </button>
+          {isToolMenuOpen && (
+            <div className="absolute bottom-full left-0 mb-3 w-full rounded-2xl border border-gray-200/70 dark:border-white/10 bg-white/95 dark:bg-gray-900/95 shadow-2xl p-3 z-40">
+              <div className="grid grid-cols-3 gap-2">
+                {toolCards.map((tool) => (
+                  <button
+                    key={tool.id}
+                    type="button"
+                    disabled={tool.disabled}
+                    onClick={() => {
+                      if (tool.disabled || !onOpenTool) return;
+                      onOpenTool(tool.id);
+                      setIsToolMenuOpen(false);
+                    }}
+                    className={`aspect-square w-full rounded-xl border flex flex-col items-center justify-center gap-2 px-2 py-3 text-[11px] font-semibold transition-colors ${
+                      tool.disabled
+                        ? 'bg-gray-100/40 dark:bg-gray-800/40 border-gray-200/50 dark:border-gray-800/60 text-gray-400 cursor-default'
+                        : 'bg-white/70 dark:bg-gray-900/40 border-gray-200/70 dark:border-white/10 text-gray-700 dark:text-gray-200 hover:bg-gray-100/70 dark:hover:bg-white/5'
+                    }`}
+                  >
+                    <tool.icon size={18} />
+                    <span className="text-center leading-tight">{tool.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {deleteConfirmId && (

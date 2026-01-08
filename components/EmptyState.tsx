@@ -1,5 +1,5 @@
 import React from 'react';
-import { Film, Image, Sparkles, Layers } from 'lucide-react';
+import { Film, Image, Library, Layers } from 'lucide-react';
 import { Language, ToolView } from '../types';
 
 interface EmptyStateProps {
@@ -17,17 +17,17 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ language, onOpenTool }) 
       enabled: true,
     },
     {
+      id: 'storyboard' as ToolView,
+      title: language === 'zh' ? '分镜设计' : 'Storyboard Design',
+      desc: language === 'zh' ? '固定 9 镜头拼贴与脚本' : '9-shot collage & script',
+      icon: Library,
+      enabled: true,
+    },
+    {
       id: 'videoFrames' as ToolView,
       title: language === 'zh' ? '提取视频首尾帧' : 'Video Frames',
       desc: language === 'zh' ? '上传 30 秒内视频并导出首/尾帧' : 'Extract first/last frame',
       icon: Film,
-      enabled: true,
-    },
-    {
-      id: 'xhs' as ToolView,
-      title: language === 'zh' ? 'XHS 灵感实验室' : 'XHS Lab',
-      desc: language === 'zh' ? '灵感输入与内容结构输出' : 'Idea to outline',
-      icon: Sparkles,
       enabled: true,
     },
     {

@@ -6,7 +6,7 @@
 export type ApiMode = 'openai' | 'gemini';
 export type ThemeMode = 'system' | 'light' | 'dark';
 export type Language = 'system' | 'en' | 'zh';
-export type ToolView = 'promptLibrary' | 'slicer' | 'videoFrames' | 'xhs' | 'timeline' | 'more';
+export type ToolView = 'promptLibrary' | 'slicer' | 'storyboard' | 'videoFrames' | 'xhs' | 'timeline' | 'more';
 export type GeminiResolution = '1K' | '2K' | '4K';
 export type GeminiAspectRatio =
   | 'auto'

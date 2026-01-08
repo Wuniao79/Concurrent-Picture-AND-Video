@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sora2 九宫格拼贴工具 v21.1 (进度条修复+文生视频版)</title>
+    <style>
+        :root {
+            --bg-color: #f4f1ea;
+            --card-bg: #ffffff;
+            --border-color: #000000;
+            --accent-blue: #a3c4f3;
+            --accent-pink: #f4acb7;
+            --accent-green: #90be6d;
+            --accent-yellow: #f9e2af;
+            --accent-purple: #cdb4db;
+            --text-main: #2b2b2b;
+            --border-width: 2px;
+            --shadow-offset: 4px;
+        }
+
+        body {
+            font-family: 'Courier New', Courier, 'Segoe UI', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+            background-image: radial-gradient(#d1d1d1 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+
+        h1 {
+            text-align: center;
+            color: var(--text-main);
+            margin-bottom: 30px;
+            font-weight: 900;
+            text-transform: uppercase;
+            background: var(--card-bg);
+            border: var(--border-width) solid var(--border-color);
+            box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--border-color);
+            padding: 15px;
+        }
+        
+        /* 通用控件样式 */
+        select, input, textarea, button {
+            border: var(--border-width) solid var(--border-color);
+            font-family: inherit;
+            border-radius: 0;
+            box-sizing: border-box;
+        }
+        
+        button {
+            background: #fff;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 var(--border-color);
+            transition: all 0.1s;
+        }
+        button:active { transform: translate(2px, 2px); box-shadow: 0 0 0 transparent; }
+        
+        input:focus, textarea:focus, select:focus { outline: none; background-color: #fffbf0; border-color: #0056b3; }
+
+        /* 顶部栏 */
+        .top-bar {
+            background: var(--card-bg);
+            padding: 15px;
+            border: var(--border-width) solid var(--border-color);
+            box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--border-color);
+            margin-bottom: 25px;
+            display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; align-items: center;
+        }
+        .btn-toggle-ai { background: var(--accent-blue); padding: 8px 16px; }
+
+        /* AI设置面板 */
+        .ai-config-panel {
+            background: #e8e8e8;
+            border: var(--border-width) solid var(--border-color);
+            box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--border-color);
+            padding: 20px; margin-bottom: 25px; display: none;
+        }
+        .ai-config-panel.show { display: block; animation: slideDown 0.3s ease-out; }
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .ai-form-row { display: flex; gap: 15px; margin-bottom: 15px; flex-wrap: wrap; }
+        .ai-form-group { flex: 1; min-width: 220px; }
+        .ai-form-group label { display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold; }
+        .ai-form-group input { width: 100%; padding: 10px; }
+
+        /* 主布局 */
+        .main-layout { display: flex; gap: 30px; align-items: flex-start; }
+        .left-panel { flex: 3; min-width: 0; }
+        .right-panel {
+            flex: 1; position: sticky; top: 20px;
+            background: var(--card-bg);
+            border: var(--border-width) solid var(--border-color);
+            box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--border-color);
+            padding: 20px; max-height: 80vh; overflow-y: auto;
+        }
+
+        /* 九宫格 */
+        .grid-container {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 30px;
+        }
+        .scene-card {
+            background: var(--card-bg); padding: 15px;
+            border: var(--border-width) solid var(--border-color);
+            box-shadow: 4px 4px 0 rgba(0,0,0,0.2);
+            display: flex; flex-direction: column; gap: 10px;
+        }
+        .scene-header { font-weight: 900; border-bottom: 2px dashed #ccc; padding-bottom: 8px; display: flex; justify-content: space-between; }
+        
+        /* 图片上传容器 (通用) */
+        .img-upload-box {
+            background-color: #f4f4f4; border: 2px dashed #999;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; position: relative; overflow: hidden;
+            transition: all 0.2s ease;
+        }
+        .img-upload-box:hover { background-color: #fff; border-color: #000; }
+        .img-upload-box.drag-active { border-color: var(--accent-green); background-color: #e8f5e9; }
+        
+        /* 九宫格特定高度 */
+        .grid-upload-box { height: 140px; }
+        .grid-upload-box img { width: 100%; height: 100%; object-fit: cover; display: none; pointer-events: none;}
+
+        /* 输出预览特定样式 */
+        .output-preview-box { 
+            height: auto; 
+            min-height: 300px; /* 最小高度 */
+            padding: 10px;
+            flex-direction: column;
+        }
+        .output-preview-box canvas { 
+            max-width: 100%; 
+            height: auto; 
+            box-shadow: 2px 2px 0 rgba(0,0,0,0.1);
+            display: none; /* 初始隐藏 */
+        }
+        
+        /* 按钮通用 */
+        .img-btn { position: absolute; top: 10px; width: 32px; height: 32px; border: 2px solid black; text-align: center; line-height: 28px; cursor: pointer; display: none; z-index: 10; font-weight: bold; box-shadow: 2px 2px 0 black; font-size: 16px; }
+        .img-btn:active { transform: translate(1px,1px); box-shadow: 1px 1px 0 black; }
+        .delete-btn { right: 10px; background: var(--accent-pink); }
+        .download-btn { right: 50px; background: var(--accent-yellow); }
+
+        .upload-text { font-size: 12px; font-weight: bold; color: #666; text-align: center; pointer-events: none;}
+
+        /* 角色管理 */
+        .char-manager-title { margin: -20px -20px 15px -20px; padding: 15px 20px; background: var(--accent-yellow); border-bottom: 3px solid #000; }
+        .char-item { display: flex; gap: 5px; margin-bottom: 8px; background: #fff; padding: 5px; border: 1px solid #000; }
+        .char-item input { border: none; font-weight: bold; width: 100%; }
+        .btn-add-char { width: 100%; padding: 10px; background: var(--accent-green); }
+
+        /* 底部操作 */
+        .controls { text-align: center; margin: 40px 0; }
+        .gen-btn { background-color: #000; color: white; padding: 15px 60px; font-size: 20px; box-shadow: 6px 6px 0 #888; }
+        .gen-btn:hover { background-color: #333; transform: translateY(-2px); box-shadow: 8px 8px 0 #666; }
+
+        /* 输出区域 */
+        .output-section {
+            background: var(--card-bg); padding: 25px;
+            border: var(--border-width) solid var(--border-color);
+            box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--border-color);
+            margin-top: 30px; display: flex; flex-direction: column; gap: 30px;
+        }
+        .storyboard-output-group { display: flex; gap: 30px; }
+        .output-col { flex: 1; }
+        #text-output { width: 100%; height: 500px; padding: 15px; line-height: 1.6; }
+
+        /* ================= 视频生成核心样式 ================= */
+        .video-generation-section { border-top: 2px dashed #000; padding-top: 20px; }
+        
+        .video-controls { display: flex; gap: 15px; align-items: center; margin-bottom: 20px; flex-wrap: wrap; background: #eee; padding: 15px; border: 2px solid #000; }
+        .btn-gen-video { background-color: var(--accent-purple); padding: 10px 25px; box-shadow: 4px 4px 0 black; font-weight: 900; }
+        .btn-gen-video:hover { transform: translateY(-2px); box-shadow: 6px 6px 0 black; }
+        .btn-gen-video:active { transform: translate(2px,2px); box-shadow: 2px 2px 0 black; }
+
+        /* 任务列表 */
+        #video-task-list { display: flex; flex-direction: column-reverse; gap: 20px; }
+
+        /* 任务卡片布局 */
+        .video-task-card {
+            background: #fff;
+            border: 2px solid #000;
+            padding: 0;
+            box-shadow: 6px 6px 0 #ccc;
+            display: flex;
+            flex-direction: column;
+            animation: slideIn 0.3s ease;
+        }
+        @keyframes slideIn { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:translateY(0); } }
+
+        .task-header-bar {
+            background: #000; color: #fff;
+            padding: 8px 15px;
+            display: flex; justify-content: space-between; align-items: center;
+            font-size: 14px; font-weight: bold;
+        }
+        .btn-del-task {
+            background: #d00; color: white; border: 1px solid #fff;
+            padding: 2px 8px; font-size: 10px; box-shadow: none;
+        }
+        .btn-del-task:hover { background: #f00; }
+
+        .task-body-grid { display: flex; gap: 0; }
+
+        .task-left-panel {
+            flex: 1; padding: 20px; border-right: 2px solid #000;
+            display: flex; flex-direction: column; justify-content: center; gap: 15px;
+        }
+
+        .task-right-panel {
+            width: 320px; background: #000;
+            display: flex; align-items: center; justify-content: center;
+            position: relative; min-height: 180px;
+        }
+        
+        .task-right-panel video { width: 100%; height: 100%; object-fit: contain; display: none; }
+        
+        .preview-placeholder {
+            color: #666; font-size: 12px; text-align: center;
+            display: flex; flex-direction: column; align-items: center; gap: 5px;
+        }
+        .preview-spinner {
+            width: 30px; height: 30px; border: 4px solid #333; border-top-color: #fff;
+            border-radius: 50%; animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* 进度条 */
+        .progress-wrapper { width: 100%; }
+        .progress-track { width: 100%; height: 24px; background: #eee; border: 2px solid #000; position: relative; }
+        .progress-fill {
+            height: 100%;
+            background: repeating-linear-gradient(45deg, var(--accent-yellow), var(--accent-yellow) 10px, #faeecf 10px, #faeecf 20px);
+            width: 0%; transition: width 0.3s ease-out; border-right: 2px solid #000;
+        }
+        .progress-text {
+            position: absolute; width: 100%; top: 0; left: 0; height: 100%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 12px; font-weight: bold; color: #000; text-shadow: 1px 1px 0 #fff; z-index: 2;
+        }
+        .progress-fill.success { background: var(--accent-green); border-right: none; }
+        .progress-fill.error { background: var(--accent-pink); }
+        .task-prompt-preview { font-size: 12px; color: #555; background: #f9f9f9; padding: 8px; border: 1px dashed #999; max-height: 60px; overflow-y: auto; }
+
+        @media (max-width: 1024px) {
+            .main-layout { flex-direction: column-reverse; }
+            .grid-container { grid-template-columns: repeat(2, 1fr); }
+            .storyboard-output-group { flex-direction: column; }
+            .task-body-grid { flex-direction: column; }
+            .task-left-panel { border-right: none; border-bottom: 2px solid #000; }
+            .task-right-panel { width: 100%; height: 200px; }
+        }
+        @media (max-width: 768px) {
+            .grid-container { grid-template-columns: 1fr; }
+            .top-bar { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Sora2 九宫格拼贴工具 <span style="font-size:0.5em;color:#666;font-weight:normal">v21.1 修复优化版</span></h1>
+    
+    <div class="top-bar">
+        <label><strong>图片比例：</strong></label>
+        <select id="aspect-ratio">
+            <option value="1:1">1:1</option>
+            <option value="16:9">16:9</option>
+            <option value="9:16">9:16</option>
+            <option value="4:3">4:3</option>
+            <option value="21:9">21:9</option>
+        </select>
+        <button class="btn-toggle-ai" onclick="toggleAIConfig()">🤖 AI 接口设置</button>
+    </div>
+
+    <div class="ai-config-panel" id="ai-config">
+        <div class="ai-form-row">
+            <div class="ai-form-group">
+                <label>API Key</label>
+                <input type="password" id="ai-key" placeholder="sk-..." onchange="saveAIConfig()">
+            </div>
+            <div class="ai-form-group">
+                <label>Base URL</label>
+                <input type="text" id="ai-url" value="https://grsaiapi.com/v1" onchange="saveAIConfig()">
+            </div>
+        </div>
+        <div class="ai-form-row">
+            <div class="ai-form-group">
+                <label>💬 对话路径 (Chat)</label>
+                <input type="text" id="ai-chat-path" value="/chat/completions" onchange="saveAIConfig()">
+            </div>
+            <div class="ai-form-group">
+                <label>🖼️ 生图路径 (Image)</label>
+                <input type="text" id="ai-img-path" value="/images/generations" onchange="saveAIConfig()">
+            </div>
+            <div class="ai-form-group">
+                <label>🎥 视频路径 (Video)</label>
+                <input type="text" id="ai-video-path" value="/video/sora-video" onchange="saveAIConfig()">
+            </div>
+        </div>
+        <div class="ai-form-row">
+            <div class="ai-form-group">
+                <label>👁️ 识图模型名</label>
+                <input type="text" id="ai-chat-model" value="gemini-1.5-flash" onchange="saveAIConfig()">
+            </div>
+            <div class="ai-form-group">
+                <label>🎨 生图模型名</label>
+                <input type="text" id="ai-img-model" value="nano-banana-fast" onchange="saveAIConfig()">
+            </div>
+             <div class="ai-form-group">
+                <label>🎬 视频模型名</label>
+                <input type="text" id="ai-video-model" value="sora-2" onchange="saveAIConfig()">
+            </div>
+        </div>
+    </div>
+
+    <div class="main-layout">
+        <div class="left-panel">
+            <div class="grid-container" id="grid-inputs"></div>
+            <div class="controls">
+                <button class="gen-btn" onclick="generateResult()">生成分镜图与脚本</button>
+            </div>
+        </div>
+
+        <div class="right-panel">
+            <h3 class="char-manager-title">🎭 角色列表</h3>
+            <div id="character-list"></div>
+            <button class="btn-add-char" onclick="addNewCharacter()">+ 新增角色</button>
+        </div>
+    </div>
+
+    <div class="output-section" id="output-area" style="display:none;">
+        <div class="storyboard-output-group">
+            <div class="output-col">
+                <h3>图片预览</h3>
+                <div class="img-upload-box output-preview-box" id="final-output-box" onclick="document.getElementById('out-file-input').click()">
+                    <span class="img-btn delete-btn" id="out-del-btn" onclick="clearOutput(event)" title="清除图片">×</span>
+                    <span class="img-btn download-btn" id="out-dl-btn" onclick="downloadCanvas(event)" title="下载图片">⬇️</span>
+                    
+                    <div class="upload-text" id="out-upload-text">
+                        <span style="font-size: 24px;">🖼️</span><br>
+                        点击生成 或 <br>拖拽图片到此处上传<br>(若为空则仅使用文本生成)
+                    </div>
+                    
+                    <canvas id="final-canvas"></canvas>
+                    <input type="file" id="out-file-input" accept="image/*" style="display:none" onchange="handleOutputUpload(this)">
+                </div>
+            </div>
+            <div class="output-col">
+                <h3>脚本文字</h3>
+                <textarea id="text-output" placeholder="在此处输入或生成视频提示词..."></textarea>
+                <button onclick="copyText()" style="margin-top:10px; padding: 10px; background: #28a745; color: white;">复制文字</button>
+            </div>
+        </div>
+
+        <div class="video-generation-section">
+            <h3 style="background:#000; color:#fff; display:inline-block; padding:5px 10px;">🎥 Sora 视频生成中心</h3>
+            <div class="video-controls">
+                <label style="font-weight:bold;">视频时长(秒): </label>
+                <input type="number" id="video-duration" value="5" min="1" max="15" style="width: 60px; padding:5px;">
+                <div style="flex:1;"></div>
+                <button class="btn-gen-video" id="btn-gen-video" onclick="submitVideoTask()">🎬 新建并发任务 +</button>
+            </div>
+            
+            <div id="video-task-list">
+                </div>
+        </div>
+    </div>
+
+    <div id="error-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:1000; align-items:center; justify-content:center;">
+        <div style="background:#fff; padding:20px; border:3px solid #000; width:90%; max-width:450px;">
+            <div style="font-size:20px; font-weight:900; border-bottom:2px solid #000; margin-bottom:10px;">⚠️ 错误</div>
+            <div id="error-msg-content" style="background:#fff0f0; color:#d00; padding:10px; border:1px solid #d00; font-family:monospace; margin-bottom:15px; overflow-wrap:break-word;"></div>
+            <button onclick="document.getElementById('error-modal').style.display='none'" style="background:#000; color:#fff; padding:5px 15px;">关闭</button>
+        </div>
+    </div>
+
+<script>
+    const numToChinese = ["", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
+    let fileStore = new Array(9).fill(null);
+    let characters = JSON.parse(localStorage.getItem('sora2_characters')) || [{ id: 'c1', name: '主角' }];
+    let taskCounter = 0;
+
+    window.onload = function() { 
+        renderCharacterList(); renderGrid(); loadAIConfig(); setupOutputDragDrop(); 
+        document.getElementById('output-area').style.display = 'flex'; 
+    };
+    function toggleAIConfig() { document.getElementById('ai-config').classList.toggle('show'); }
+    function showError(msg) { document.getElementById('error-msg-content').textContent = msg; document.getElementById('error-modal').style.display = 'flex'; }
+
+    // 配置
+    function saveAIConfig() {
+        ['ai-key','ai-url','ai-chat-path','ai-img-path','ai-video-path','ai-video-model','ai-img-model','ai-chat-model'].forEach(id => {
+            const el = document.getElementById(id);
+            if(el) localStorage.setItem('sb_'+id, el.value);
+        });
+    }
+    function loadAIConfig() {
+        ['ai-key','ai-url','ai-chat-path','ai-img-path','ai-video-path','ai-video-model','ai-img-model','ai-chat-model'].forEach(id => {
+            if(localStorage.getItem('sb_'+id)) document.getElementById(id).value = localStorage.getItem('sb_'+id);
+        });
+    }
+    
+    // 角色
+    function saveCharactersToLocal() { localStorage.setItem('sora2_characters', JSON.stringify(characters)); }
+    function renderCharacterList() { 
+        const list=document.getElementById('character-list'); list.innerHTML=''; 
+        characters.forEach(c=>{ 
+            const div=document.createElement('div'); div.className='char-item'; 
+            div.innerHTML=`<input value="${c.name}" oninput="updateCharacterName('${c.id}',this.value)"><button style="background:var(--accent-pink);width:24px;" onclick="deleteCharacter('${c.id}')">×</button>`; 
+            list.appendChild(div); 
+        }); 
+        updateAllRoleSelects(); 
+    }
+    function addNewCharacter() { characters.push({ id: 'c'+Date.now(), name: '新角色' }); saveCharactersToLocal(); renderCharacterList(); }
+    function deleteCharacter(id) { if(confirm("删除此角色？")) { characters = characters.filter(c => c.id !== id); saveCharactersToLocal(); renderCharacterList(); } }
+    function updateCharacterName(id, val) { characters.find(c=>c.id===id).name=val; saveCharactersToLocal(); updateAllRoleSelects(); }
+    function updateAllRoleSelects() { 
+        const html = characters.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+        document.querySelectorAll('.role-select').forEach(s => { const v=s.value; s.innerHTML=html; s.value=v; });
+    }
+
+    // 九宫格图片处理
+    function triggerInput(i) { document.getElementById(`file-input-${i}`).click(); }
+    function handleFileSelect(input, i) { if(input.files[0]) handleNewFile(input.files[0], i); }
+    function handleNewFile(file, i) {
+        fileStore[i] = file;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const div = document.getElementById(`drop-zone-${i}`);
+            div.querySelector('img').src = e.target.result;
+            div.querySelector('img').style.display = 'block';
+            div.querySelector('.upload-text').style.display = 'none';
+            div.querySelectorAll('.img-btn').forEach(b=>b.style.display='block');
+        };
+        reader.readAsDataURL(file);
+    }
+    function clearImage(i, e) {
+        e.stopPropagation(); fileStore[i]=null;
+        const div = document.getElementById(`drop-zone-${i}`);
+        div.querySelector('img').src=''; div.querySelector('img').style.display='none';
+        div.querySelector('.upload-text').style.display='block';
+        div.querySelectorAll('.img-btn').forEach(b=>b.style.display='none');
+        document.getElementById(`file-input-${i}`).value="";
+    }
+    function downloadSingleImage(i, e) {
+        e.stopPropagation(); if(!fileStore[i]) return;
+        const a = document.createElement('a'); a.href=URL.createObjectURL(fileStore[i]); a.download=`scene_${i+1}.png`; a.click();
+    }
+    
+    function renderGrid() {
+        const container = document.getElementById('grid-inputs');
+        for (let i = 0; i < 9; i++) {
+            const card = document.createElement('div'); card.className = 'scene-card';
+            card.innerHTML = `
+                <div class="scene-header"><span>镜头${numToChinese[i+1]}</span><span>#${i+1}</span></div>
+                <div class="img-upload-box grid-upload-box" id="drop-zone-${i}" onclick="triggerInput(${i})">
+                    <span class="img-btn delete-btn" onclick="clearImage(${i}, event)">×</span>
+                    <span class="img-btn download-btn" onclick="downloadSingleImage(${i}, event)">⬇️</span>
+                    <span class="upload-text">+ 上传图片</span>
+                    <img id="preview-${i}" /><input type="file" id="file-input-${i}" style="display:none" onchange="handleFileSelect(this, ${i})">
+                </div>
+                <div style="display:flex; gap:5px; margin-top:5px;">
+                    <button style="flex:1;background:#dcd6f7;font-size:12px;" onclick="analyzeImage(${i}, this)">AI识图</button>
+                    <button style="flex:1;background:#ffc8dd;font-size:12px;" onclick="generateImage(${i}, this)">AI生图</button>
+                </div>
+                <textarea id="desc-${i}" placeholder="画面描述..." style="height:60px;margin-top:5px;"></textarea>
+                <div style="border-top:1px dashed #ccc; padding-top:5px;">
+                    <div id="dialogue-container-${i}"></div>
+                    <button onclick="addDialogueRow(${i})" style="width:100%; font-size:12px;">+ 台词</button>
+                </div>
+                <input type="text" id="duration-${i}" placeholder="时长 (例: 3)" style="margin-top:5px;">
+            `;
+            container.appendChild(card);
+            const dz = document.getElementById(`drop-zone-${i}`);
+            dz.ondragover = (e)=>{e.preventDefault(); dz.classList.add('drag-active');};
+            dz.ondragleave = ()=>{dz.classList.remove('drag-active');};
+            dz.ondrop = (e)=>{e.preventDefault(); dz.classList.remove('drag-active'); if(e.dataTransfer.files[0]) handleNewFile(e.dataTransfer.files[0], i);};
+        }
+    }
+    function addDialogueRow(i) {
+        if(!characters.length) return alert("请先添加角色");
+        const div = document.createElement('div'); div.style.display='flex'; div.style.marginBottom='5px';
+        div.innerHTML=`<select class="role-select" style="width:70px;">${characters.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select><input class="role-line" style="flex:1;"><button onclick="this.parentElement.remove()">-</button>`;
+        document.getElementById(`dialogue-container-${i}`).appendChild(div);
+    }
+
+    // ================== 输出区域交互逻辑 ==================
+
+    function setupOutputDragDrop() {
+        const box = document.getElementById('final-output-box');
+        box.ondragover = (e) => { e.preventDefault(); box.classList.add('drag-active'); };
+        box.ondragleave = () => { box.classList.remove('drag-active'); };
+        box.ondrop = (e) => {
+            e.preventDefault(); box.classList.remove('drag-active');
+            if (e.dataTransfer.files[0] && e.dataTransfer.files[0].type.startsWith('image/')) {
+                processOutputImage(e.dataTransfer.files[0]);
+            }
+        };
+    }
+
+    function handleOutputUpload(input) {
+        if (input.files[0]) processOutputImage(input.files[0]);
+    }
+
+    function processOutputImage(file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.getElementById('final-canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.drawImage(img, 0, 0);
+                updateOutputState(true); 
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function updateOutputState(hasImage) {
+        const canvas = document.getElementById('final-canvas');
+        const text = document.getElementById('out-upload-text');
+        const delBtn = document.getElementById('out-del-btn');
+        const dlBtn = document.getElementById('out-dl-btn');
+        
+        if (hasImage) {
+            canvas.style.display = 'block';
+            text.style.display = 'none';
+            delBtn.style.display = 'block';
+            dlBtn.style.display = 'block';
+        } else {
+            canvas.style.display = 'none';
+            text.style.display = 'block';
+            delBtn.style.display = 'none';
+            dlBtn.style.display = 'none';
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            canvas.width = 0; canvas.height = 0;
+            document.getElementById('out-file-input').value = "";
+        }
+    }
+
+    function clearOutput(e) {
+        if(e) e.stopPropagation();
+        updateOutputState(false);
+    }
+
+    // ================== 拼图生成逻辑 ==================
+    async function generateResult() {
+        const canvas = document.getElementById('final-canvas'); const ctx = canvas.getContext('2d');
+        const ratioStr = document.getElementById('aspect-ratio').value;
+        const [rw, rh] = ratioStr.split(':').map(Number);
+        const cellW = 600; const cellH = (cellW * rh) / rw;
+        canvas.width = cellW*3; canvas.height = cellH*3;
+        ctx.fillStyle = "#fff"; ctx.fillRect(0,0,canvas.width,canvas.height);
+
+        let script = ""; let time=0;
+        const promises = [];
+        
+        for(let i=0; i<9; i++) {
+            if(fileStore[i]) {
+                promises.push(new Promise(resolve => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const r = Math.floor(i/3), c = i%3;
+                        const s = Math.max(cellW/img.width, cellH/img.height);
+                        const w=img.width*s, h=img.height*s;
+                        ctx.save(); ctx.beginPath(); ctx.rect(c*cellW, r*cellH, cellW, cellH); ctx.clip();
+                        ctx.drawImage(img, c*cellW+(cellW-w)/2, r*cellH+(cellH-h)/2, w, h);
+                        ctx.restore(); resolve();
+                    };
+                    img.src = URL.createObjectURL(fileStore[i]);
+                }));
+            }
+            
+            const desc = document.getElementById(`desc-${i}`).value.trim();
+            const dur = parseFloat(document.getElementById(`duration-${i}`).value)||0;
+            if(desc || fileStore[i]) {
+                script += `[${time.toFixed(1)}-${(time+dur).toFixed(1)}s] 镜头${i+1}: ${desc||"画面"}\n`;
+                document.querySelectorAll(`#dialogue-container-${i} div`).forEach(row=>{
+                    const rid=row.querySelector('select').value; const txt=row.querySelector('input').value;
+                    if(txt) script += `   -> ${characters.find(c=>c.id===rid)?.name}: "${txt}"\n`;
+                });
+                time += dur;
+            }
+        }
+        await Promise.all(promises);
+        document.getElementById('text-output').value = script;
+        document.getElementById('output-area').style.display='flex';
+        document.getElementById('output-area').scrollIntoView({behavior:'smooth'});
+        updateOutputState(true); 
+    }
+    
+    function downloadCanvas(e) {
+        if(e) e.stopPropagation();
+        const canvas = document.getElementById('final-canvas');
+        if (canvas.width <= 0) return alert("没有图片可下载");
+        const link = document.createElement('a');
+        link.download = `sora_grid_${Date.now()}.png`;
+        link.href = canvas.toDataURL();
+        link.click();
+    }
+    function copyText() { navigator.clipboard.writeText(document.getElementById('text-output').value); alert("已复制"); }
+
+    // ================== AI 功能 ==================
+    function fileToBase64(file) { return new Promise((r,j)=>{const d=new FileReader(); d.onload=()=>r(d.result); d.onerror=j; d.readAsDataURL(file);}); }
+    function constructUrl(b,s) { return b.replace(/\/+$/,'') + (s.startsWith('/')?s:'/'+s); }
+
+    async function analyzeImage(i, btn) {
+        if(!fileStore[i]) return alert("请先上传图片");
+        const k=document.getElementById('ai-key').value; if(!k) return toggleAIConfig();
+        btn.disabled=true; btn.innerText="...";
+        try {
+            const b64 = await fileToBase64(fileStore[i]);
+            const res = await fetch(constructUrl(document.getElementById('ai-url').value, document.getElementById('ai-chat-path').value), {
+                method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${k}`},
+                body: JSON.stringify({
+                    model: document.getElementById('ai-chat-model').value || 'gemini-1.5-flash',
+                    messages: [{role:'user', content:[{type:'text', text:'简短描述画面'},{type:'image_url',image_url:{url:b64}}]}]
+                })
+            });
+            const d = await res.json();
+            document.getElementById(`desc-${i}`).value = d.choices[0].message.content;
+        } catch(e) { alert(e.message); } finally { btn.disabled=false; btn.innerText="AI识图"; }
+    }
+    
+    async function generateImage(i, btn) {
+        const desc = document.getElementById(`desc-${i}`).value; if(!desc) return alert("请填写描述");
+        const k=document.getElementById('ai-key').value; if(!k) return toggleAIConfig();
+        btn.disabled=true; btn.innerText="...";
+        try {
+            const res = await fetch(constructUrl(document.getElementById('ai-url').value, document.getElementById('ai-img-path').value), {
+                method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${k}`},
+                body: JSON.stringify({
+                    model: document.getElementById('ai-img-model').value,
+                    prompt: "mappa anime style, " + desc,
+                    size: "1024x1024" 
+                }) 
+            });
+            const d = await res.json();
+            let url = "";
+            if (d.data && d.data[0] && d.data[0].url) url = d.data[0].url;
+            else if (d.results && d.results[0] && d.results[0].url) url = d.results[0].url;
+            if (!url) throw new Error("未找到图片URL");
+            
+            const blob = await (await fetch(url)).blob();
+            handleNewFile(new File([blob], "gen.png", {type:"image/png"}), i);
+        } catch(e) { alert("生图失败:"+e.message); } finally { btn.disabled=false; btn.innerText="AI生图"; }
+    }
+
+    // ================== 视频并发生成模块 (重点修改区域) ==================
+    function submitVideoTask() {
+        const apiKey = document.getElementById('ai-key').value.trim();
+        if (!apiKey) { alert("请先设置API Key"); toggleAIConfig(); return; }
+        
+        const canvas = document.getElementById('final-canvas');
+        const scriptText = document.getElementById('text-output').value.trim();
+        
+        // 逻辑修改：判断是否有图片（宽>0且显示）
+        const hasImage = canvas.width > 0 && canvas.style.display !== 'none';
+        
+        // 校验：必须至少有图片 OR 脚本
+        if (!hasImage && !scriptText) { alert("请至少提供 参考图片 或 脚本文字！"); return; }
+
+        const taskId = ++taskCounter;
+        const currentData = {
+            // 如果没有图片，imgBase64 设为 null
+            imgBase64: hasImage ? canvas.toDataURL('image/png') : null,
+            prompt: scriptText,
+            duration: document.getElementById('video-duration').value,
+            aspectRatio: document.getElementById('aspect-ratio').value,
+            config: {
+                key: apiKey,
+                url: document.getElementById('ai-url').value,
+                path: document.getElementById('ai-video-path').value,
+                model: document.getElementById('ai-video-model').value
+            }
+        };
+        createVideoTaskCard(taskId, currentData);
+        runVideoTask(taskId, currentData);
+    }
+
+    function createVideoTaskCard(id, data) {
+        const list = document.getElementById('video-task-list');
+        const card = document.createElement('div');
+        card.className = 'video-task-card';
+        card.id = `task-card-${id}`;
+        
+        const promptPreview = data.prompt ? 
+            (data.prompt.length > 60 ? data.prompt.substring(0,60)+"..." : data.prompt) : 
+            "（无文本，仅参考图）";
+            
+        // 提示信息：显示是 "文生视频" 还是 "图生视频"
+        const modeText = data.imgBase64 ? "🖼️ 图生视频" : "📝 文生视频";
+
+        card.innerHTML = `
+            <div class="task-header-bar">
+                <span>TASK #${id} - ${data.duration}s [${modeText}]</span>
+                <button class="btn-del-task" onclick="document.getElementById('task-card-${id}').remove()">✕ 清除</button>
+            </div>
+            <div class="task-body-grid">
+                <div class="task-left-panel">
+                    <div style="font-size:12px; font-weight:bold;">生成进度:</div>
+                    <div class="progress-wrapper">
+                        <div class="progress-track">
+                            <div class="progress-fill" id="prog-bar-${id}"></div>
+                            <div class="progress-text" id="prog-text-${id}">等待上传...</div>
+                        </div>
+                    </div>
+                    <div style="font-size:12px; font-weight:bold; margin-top:10px;">提示词摘要:</div>
+                    <div class="task-prompt-preview">${promptPreview}</div>
+                </div>
+                <div class="task-right-panel" id="preview-area-${id}">
+                    <div class="preview-placeholder" id="placeholder-${id}">
+                        <div class="preview-spinner"></div>
+                        <div style="margin-top:10px;">AI 正在处理...</div>
+                    </div>
+                    <video id="video-${id}" controls loop playsinline></video>
+                </div>
+            </div>
+        `;
+        list.prepend(card); 
+    }
+
+    async function runVideoTask(id, data) {
+        const bar = document.getElementById(`prog-bar-${id}`);
+        const txt = document.getElementById(`prog-text-${id}`);
+        const previewArea = document.getElementById(`preview-area-${id}`);
+        const placeholder = document.getElementById(`placeholder-${id}`);
+        const videoEl = document.getElementById(`video-${id}`);
+
+        function updateProgress(percent, msg) {
+            bar.style.width = percent + '%';
+            txt.innerText = msg || (percent + '%');
+        }
+
+        try {
+            updateProgress(10, "上传中...");
+            const endpoint = constructUrl(data.config.url, data.config.path);
+            
+            // 构建 Payload
+            const payload = {
+                model: data.config.model,
+                prompt: data.prompt,
+                // 注意：如果 imgBase64 为 null，则不添加 url 字段，触发纯文生视频
+                // ...(data.imgBase64 ? { url: data.imgBase64 } : {}), 
+                // Sora2 等模型通常根据是否有 url 字段判断模式
+                aspectRatio: data.aspectRatio,
+                duration: parseInt(data.duration),
+                size: "small", stream: true
+            };
+            
+            // 只有当有图片时才添加 url 字段
+            if (data.imgBase64) {
+                payload.url = data.imgBase64;
+            }
+
+            const response = await fetch(endpoint, {
+                method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${data.config.key}` },
+                body: JSON.stringify(payload)
+            });
+
+            if(!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+            if (!response.body) throw new Error("不支持流式响应");
+            
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder("utf-8");
+            let buffer = "";
+            updateProgress(20, "排队/生成中...");
+            let finalUrl = null;
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop();
+                for (const line of lines) {
+                    const cleanLine = line.trim();
+                    if (!cleanLine || !cleanLine.startsWith("data:")) continue;
+                    try {
+                        const json = JSON.parse(cleanLine.substring(5));
+                        
+                        // 修复 202% BUG：
+                        // 问题原因：toFixed 返回字符串，导致 20 + "2" = "202"
+                        // 解决方案：使用 Math.round 或 Math.floor 确保是数字计算
+                        if (json.progress) {
+                            // 假设 API 返回 0-100，我们映射到 20-95
+                            const calcProgress = 20 + Math.round(json.progress * 0.75);
+                            updateProgress(calcProgress);
+                        }
+                        
+                        if (json.url) finalUrl = json.url;
+                        if (json.results && json.results[0]?.url) finalUrl = json.results[0].url;
+                        if (json.data && json.data[0]?.url) finalUrl = json.data[0].url;
+                    } catch (e) {}
+                }
+            }
+
+            if (finalUrl) {
+                updateProgress(100, "生成完成");
+                bar.classList.add('success');
+                placeholder.style.display = 'none';
+                videoEl.src = finalUrl;
+                videoEl.style.display = 'block';
+                videoEl.play();
+                const dlBtn = document.createElement('a');
+                dlBtn.href = finalUrl;
+                dlBtn.download = `sora_task_${id}.mp4`;
+                dlBtn.innerText = "⬇️ 保存视频";
+                dlBtn.style.cssText = "position:absolute; bottom:10px; right:10px; background:#fff; color:#000; padding:5px 10px; font-size:12px; font-weight:bold; border:2px solid #000; text-decoration:none;";
+                previewArea.appendChild(dlBtn);
+            } else {
+                throw new Error("未返回视频链接");
+            }
+        } catch (error) {
+            console.error(error);
+            bar.classList.add('error');
+            updateProgress(100, "失败");
+            placeholder.innerHTML = `<div style="color:red; font-size:12px;">${error.message}</div>`;
+        }
+    }
+</script>
+</body>
+</html>

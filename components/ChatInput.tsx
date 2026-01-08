@@ -802,6 +802,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                         {[
                           { id: 'promptLibrary' as ToolView, label: language === 'zh' ? '图片提示词库' : 'Prompt Library', icon: Sparkles },
                           { id: 'slicer' as ToolView, label: language === 'zh' ? '图片分割工厂' : 'Image Slicer', icon: ImageIcon },
+                          { id: 'storyboard' as ToolView, label: language === 'zh' ? '分镜设计' : 'Storyboard Design', icon: Library },
                           { id: 'videoFrames' as ToolView, label: language === 'zh' ? '提取视频首尾帧' : 'Video Frames', icon: Film },
                           { id: 'timeline' as ToolView, label: language === 'zh' ? '快捷时间线' : 'Quick Timeline', icon: Clapperboard },
                           { id: 'xhs' as ToolView, label: language === 'zh' ? 'XHS 灵感实验室' : 'XHS Lab', icon: LayoutGrid },

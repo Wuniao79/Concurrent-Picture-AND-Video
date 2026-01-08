@@ -158,10 +158,10 @@ export const PromptLibraryModal: React.FC<PromptLibraryModalProps> = ({ isOpen, 
     try {
       const parsed = JSON.parse(stored);
       if (Array.isArray(parsed)) {
-        const next = parsed.map((item: PromptItem) => ({
+        const next: PromptItem[] = parsed.map((item: PromptItem) => ({
           ...item,
           id: item.id || buildCustomId(),
-          source: 'custom',
+          source: 'custom' as const,
         }));
         setCustomItems(next);
       }

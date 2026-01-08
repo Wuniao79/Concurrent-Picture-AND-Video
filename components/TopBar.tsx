@@ -79,7 +79,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   }, [effectiveSelectedId, selectedModelId, onSelectModel]);
 
   const appName = language === 'zh' ? '枭化物' : 'XiaoHuaWu';
-  const appVersion = 'v4.2';
+  const appVersion = 'v4.3';
 
   return (
     <header

@@ -9,6 +9,7 @@ import { EmptyState } from './components/EmptyState';
 import { TopBar } from './components/TopBar';
 import { PromptLibraryModal } from './components/tools/PromptLibraryModal';
 import { ImageSlicerModal } from './components/tools/ImageSlicerModal';
+import { StoryboardDesignModal } from './components/tools/StoryboardDesignModal';
 import { VideoFrameModal } from './components/tools/VideoFrameModal';
 import { QuickTimelineModal } from './components/tools/QuickTimelineModal';
 import { XhsLabModal } from './components/tools/XhsLabModal';
@@ -490,7 +491,8 @@ const App: React.FC = () => {
         const hasModelOutput = (lane.messages || []).some(
           (m) => m.role === Role.MODEL && Boolean((m.text || '').trim())
         );
-        const status = hasError ? 'error' : isRunning ? 'running' : hasModelOutput ? 'done' : 'idle';
+        const status: 'error' | 'running' | 'done' | 'idle' =
+          hasError ? 'error' : isRunning ? 'running' : hasModelOutput ? 'done' : 'idle';
         return {
           id: lane.id,
           label: String(idx + 1),
@@ -1637,6 +1639,7 @@ const App: React.FC = () => {
         onRemoveLane={removeLane}
         onModelChange={updateModel}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenTool={handleOpenTool}
         showHistory={isHistoryPanelOpen}
         historyList={historyList}
         activeHistoryId={activeHistoryId}
@@ -1914,6 +1917,31 @@ const App: React.FC = () => {
     <ImageSlicerModal
       isOpen={activeTool === 'slicer'}
       language={language}
+      onClose={() => setActiveTool(null)}
+    />
+    <StoryboardDesignModal
+      isOpen={activeTool === 'storyboard'}
+      language={language}
+      apiMode={apiMode}
+      availableModels={availableModels}
+      roleCardsEnabled={roleCardsEnabled}
+      roleCards={roleCards}
+      showRelaySelect={showRelaySelect}
+      relays={enabledRelays}
+      activeRelayId={activeRelayId}
+      onSelectRelay={(id) => {
+        if (id === activeRelayId) return;
+        setActiveRelayId(id);
+      }}
+      openaiApiKey={effectiveOpenaiKey}
+      openaiApiUrl={effectiveOpenaiUrl}
+      geminiApiKey={geminiApiKey}
+      geminiApiUrl={effectiveGeminiUrl}
+      geminiImageSettings={geminiImageSettings}
+      geminiEnterpriseEnabled={effectiveGeminiEnterpriseEnabled}
+      geminiEnterpriseProjectId={geminiEnterpriseProjectId}
+      geminiEnterpriseLocation={geminiEnterpriseLocation}
+      geminiEnterpriseToken={geminiEnterpriseToken}
       onClose={() => setActiveTool(null)}
     />
     <VideoFrameModal
