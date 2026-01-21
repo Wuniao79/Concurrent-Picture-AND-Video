@@ -52,6 +52,7 @@ interface ChatInputProps {
   onBulkDownload?: () => void;
   showStopQueue?: boolean;
   onStopQueue?: () => void;
+  onStopGenerating?: () => void;
   isCollapsed?: boolean;
   onCollapseChange?: (next: boolean) => void;
   isFullView?: boolean;
@@ -92,6 +93,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   onBulkDownload,
   showStopQueue,
   onStopQueue,
+  onStopGenerating,
   isCollapsed,
   onCollapseChange,
   isFullView,
@@ -127,7 +129,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
   const IMAGE_MAX_DIMENSION = 1024;
   const IMAGE_TARGET_MAX_BYTES = 1_200_000;
-  const IMAGE_MAX_COUNT = moreImagesEnabled ? 5 : 1;
+  const IMAGE_MAX_COUNT = moreImagesEnabled ? 10 : 1;
 
   useEffect(() => {
     if (!moreImagesEnabled && selectedImages.length > 1) {
@@ -585,7 +587,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                   key={item.id}
                   type="button"
                   onClick={() => onSelectLane?.(item.id)}
-                  className={`h-7 w-8 text-[9px] font-semibold rounded-md border transition-colors flex items-center gap-0.5 px-0.5 ${
+                  className={`h-9 w-9 text-[10px] font-semibold rounded-lg border transition-colors flex items-center gap-1 px-1 ${
                     item.isActive
                       ? 'bg-blue-600 border-blue-600 text-white'
                       : 'bg-white/60 dark:bg-gray-900/40 border-gray-200/70 dark:border-white/10 text-gray-700 dark:text-gray-200 hover:bg-gray-100/70 dark:hover:bg-white/5'
@@ -593,7 +595,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                   title={item.label || String(idx + 1)}
                 >
                   <span
-                    className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${
+                    className={`h-2 w-2 rounded-full flex-shrink-0 ${
                       item.status === 'error'
                         ? 'bg-red-500'
                         : item.status === 'running'
@@ -803,7 +805,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                           { id: 'promptLibrary' as ToolView, label: language === 'zh' ? '图片提示词库' : 'Prompt Library', icon: Sparkles },
                           { id: 'slicer' as ToolView, label: language === 'zh' ? '图片分割工厂' : 'Image Slicer', icon: ImageIcon },
                           { id: 'storyboard' as ToolView, label: language === 'zh' ? '分镜设计' : 'Storyboard Design', icon: Library },
-                          { id: 'videoFrames' as ToolView, label: language === 'zh' ? '提取视频首尾帧' : 'Video Frames', icon: Film },
+                          { id: 'videoFrames' as ToolView, label: language === 'zh' ? '提取视频帧' : 'Video Frames', icon: Film },
                           { id: 'timeline' as ToolView, label: language === 'zh' ? '快捷时间线' : 'Quick Timeline', icon: Clapperboard },
                           { id: 'xhs' as ToolView, label: language === 'zh' ? 'XHS 灵感实验室' : 'XHS Lab', icon: LayoutGrid },
                           { id: 'more' as ToolView, label: language === 'zh' ? '更多功能' : 'More', icon: Layers, disabled: true },
@@ -1019,6 +1021,17 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                     >
                       <X size={14} />
                       <span>{language === 'zh' ? '终止排队' : 'Stop queue'}</span>
+                    </button>
+                  )}
+                  {isGenerating && onStopGenerating && (
+                    <button
+                      type="button"
+                      onClick={onStopGenerating}
+                      className="h-9 inline-flex items-center gap-2 px-3 rounded-xl border text-xs font-semibold transition-colors bg-red-600 border-red-600 text-white hover:bg-red-700"
+                      title={language === 'zh' ? '终止当前生成' : 'Stop generating'}
+                    >
+                      <X size={14} />
+                      <span>{language === 'zh' ? '终止' : 'Stop'}</span>
                     </button>
                   )}
                   <button

@@ -341,6 +341,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const markdownImages = extractMarkdownImages(fullText);
   const inlineImages = extractInlineImagesFromText(fullText);
   const allImages = Array.from(new Set([...messageImages, ...markdownImages, ...inlineImages]));
+  const hasImages = allImages.length > 0;
   const shouldStrip = markdownImages.length > 0 || inlineImages.length > 0;
   const strippedText = shouldStrip ? stripInlineImageData(stripMarkdownImages(fullText)) : fullText;
   const imageCacheReady = Boolean(cacheHistoryId && cacheLaneId && message.id);
@@ -382,6 +383,52 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       cancelled = true;
     };
   }, [imageCacheKey, imageCacheReady, cacheHistoryId, cacheLaneId, message.id, downloadProxyUrl, isUser, allImages]);
+
+  const renderImageGallery = (textOverride?: string | null) => {
+    const textToShow = textOverride === undefined ? strippedText : textOverride;
+    return (
+      <div className="space-y-3">
+        {textToShow && <div>{renderMarkdownContent(textToShow)}</div>}
+        <div className="flex flex-wrap gap-3">
+          {allImages.map((src, idx) => {
+            const labelIndex = idx + 1;
+            const timestamp = typeof message.timestamp === 'number' ? message.timestamp : Date.now();
+            const nameBase = `generated_image_${timestamp}_${String(labelIndex).padStart(2, '0')}`;
+            const cacheId =
+              imageCacheReady && cacheHistoryId && cacheLaneId
+                ? buildImageCacheId(cacheHistoryId, cacheLaneId, message.id, idx)
+                : undefined;
+
+            return (
+              <div key={idx} className="max-w-full flex flex-col gap-2">
+                <img
+                  src={src}
+                  alt={`Generated image ${idx + 1}`}
+                  onClick={() => setPreviewImage(src)}
+                  className="cursor-pointer rounded-xl border border-gray-700 max-h-[420px] max-w-full object-contain bg-black hover:opacity-80 transition"
+                />
+
+                <button
+                  onClick={() => handleDownloadImage(src, nameBase, cacheId)}
+                  className="w-fit px-3 py-1 bg-green-600 hover:bg-green-500 text-white text-xs rounded-md border border-green-700 shadow-sm"
+                >
+                  下载图片 {labelIndex}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openAddToLibrary("image", src, nameBase)}
+                  className="w-fit px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-md border border-blue-700 shadow-sm"
+                >
+                  添加到素材库
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        {assetToast && <div className="text-[11px] text-emerald-500">{assetToast}</div>}
+      </div>
+    );
+  };
 
   const renderModelContent = () => {
     // 仅有 Sora 日志（生成中，视频未就绪）
@@ -552,6 +599,27 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     };
 
     if (shouldCollapseReasoning(fullText)) {
+      if (hasImages) {
+        const collapsedText = (strippedText || fullText).trim();
+        return (
+          <div className="space-y-3">
+            {collapsedText && (
+              <details className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/40 px-3 py-2 text-xs leading-relaxed text-gray-700 dark:text-gray-200">
+                <summary className="flex items-center gap-1 cursor-pointer select-none text-gray-600 dark:text-gray-300">
+                  <ChevronRight className="w-3 h-3 inline-block" />
+                  <span>
+                    {durationSeconds
+                      ? `思考过程（用时 ${durationSeconds} 秒）`
+                      : "已折叠思考过程"}
+                  </span>
+                </summary>
+                <div className="mt-2">{renderMarkdownContent(collapsedText)}</div>
+              </details>
+            )}
+            {renderImageGallery(null)}
+          </div>
+        );
+      }
       return (
         <details className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/40 px-3 py-2 text-xs leading-relaxed text-gray-700 dark:text-gray-200">
           <summary className="flex items-center gap-1 cursor-pointer select-none text-gray-600 dark:text-gray-300">
@@ -574,70 +642,37 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         const reasoning = parts.slice(0, -1).join("\n\n").trim();
 
         if (reasoning.length > 300 && answer.length > 0) {
+          const safeReasoning = stripInlineImageData(stripMarkdownImages(reasoning)).trim();
+          const safeAnswer = stripInlineImageData(stripMarkdownImages(answer)).trim();
           return (
             <>
-              <details className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/40 px-3 py-2 text-xs leading-relaxed text-gray-700 dark:text-gray-200">
-                <summary className="flex items-center gap-1 cursor-pointer select-none text-gray-600 dark:text-gray-300">
-                  <ChevronRight className="w-3 h-3 inline-block" />
-                  <span>
-                    {durationSeconds
-                      ? `生成过程（用时${durationSeconds} 秒）`
-                      : "查看生成过程 / Thinking"}
-                  </span>
-                </summary>
-                <div className="mt-2">{renderMarkdownContent(reasoning)}</div>
-              </details>
+              {safeReasoning && (
+                <details className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/40 px-3 py-2 text-xs leading-relaxed text-gray-700 dark:text-gray-200">
+                  <summary className="flex items-center gap-1 cursor-pointer select-none text-gray-600 dark:text-gray-300">
+                    <ChevronRight className="w-3 h-3 inline-block" />
+                    <span>
+                      {durationSeconds
+                        ? `生成过程（用时${durationSeconds} 秒）`
+                        : "查看生成过程 / Thinking"}
+                    </span>
+                  </summary>
+                  <div className="mt-2">{renderMarkdownContent(safeReasoning)}</div>
+                </details>
+              )}
 
-              <div className="mt-3">{renderMarkdownContent(answer)}</div>
+              {hasImages ? (
+                renderImageGallery(safeAnswer || null)
+              ) : (
+                <div className="mt-3">{renderMarkdownContent(answer)}</div>
+              )}
             </>
           );
         }
       }
     }
 
-    if (allImages.length > 0) {
-      return (
-        <div className="space-y-3">
-          {strippedText && <div>{renderMarkdownContent(strippedText)}</div>}
-          <div className="flex flex-wrap gap-3">
-            {allImages.map((src, idx) => {
-              const labelIndex = idx + 1;
-              const timestamp = typeof message.timestamp === 'number' ? message.timestamp : Date.now();
-              const nameBase = `generated_image_${timestamp}_${String(labelIndex).padStart(2, '0')}`;
-              const cacheId =
-                imageCacheReady && cacheHistoryId && cacheLaneId
-                  ? buildImageCacheId(cacheHistoryId, cacheLaneId, message.id, idx)
-                  : undefined;
-
-              return (
-                <div key={idx} className="max-w-full flex flex-col gap-2">
-                  <img
-                    src={src}
-                    alt={`Generated image ${idx + 1}`}
-                    onClick={() => setPreviewImage(src)}
-                    className="cursor-pointer rounded-xl border border-gray-700 max-h-[420px] max-w-full object-contain bg-black hover:opacity-80 transition"
-                  />
-
-                  <button
-                    onClick={() => handleDownloadImage(src, nameBase, cacheId)}
-                    className="w-fit px-3 py-1 bg-green-600 hover:bg-green-500 text-white text-xs rounded-md border border-green-700 shadow-sm"
-                  >
-                    下载图片 {labelIndex}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openAddToLibrary("image", src, nameBase)}
-                    className="w-fit px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-md border border-blue-700 shadow-sm"
-                  >
-                    添加到素材库
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-          {assetToast && <div className="text-[11px] text-emerald-500">{assetToast}</div>}
-        </div>
-      );
+    if (hasImages) {
+      return renderImageGallery();
     }
 
     return renderMarkdownContent(fullText);
@@ -654,10 +689,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     const previewBase = cleaned.replace(/\s+/g, ' ');
     const preview = previewBase.length > 60 ? `${previewBase.slice(0, 60)}…` : previewBase;
     return (
-      <details className="rounded-lg border border-gray-700/60 bg-gray-900/40 px-3 py-2 text-sm text-gray-100">
-        <summary className="cursor-pointer select-none text-gray-200 flex items-center gap-2">
+      <details className="rounded-lg border border-gray-200/80 bg-white/80 px-3 py-2 text-sm text-gray-700 shadow-sm dark:border-gray-700/60 dark:bg-gray-900/40 dark:text-gray-100">
+        <summary className="cursor-pointer select-none text-gray-600 dark:text-gray-200 flex items-center gap-2">
           <span className="text-xs font-semibold">已收起</span>
-          <span className="text-[10px] text-gray-400 truncate" title={preview}>
+          <span className="text-[10px] text-gray-500 dark:text-gray-400 truncate" title={preview}>
             {preview}
           </span>
         </summary>
@@ -700,7 +735,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             <div
               className={`rounded-2xl px-4 py-3 shadow-sm ${
                 isUser
-                  ? "bg-gray-900 text-gray-50"
+                  ? "bg-blue-50/80 text-gray-900 border border-blue-200/80 dark:bg-gray-900 dark:text-gray-50 dark:border-gray-800"
                   : "bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800"
               }`}
             >

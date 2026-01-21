@@ -29,6 +29,7 @@ import { RelaySite, GeminiKeySite } from '../hooks/useSettings';
 import { v4 as uuidv4 } from 'uuid';
 import { generateResponse } from '../services/geminiService';
 import { AssetLibraryPanel } from './AssetLibraryPanel';
+import { normalizeModalities, resolveModelModalities, resolvePrimaryModality } from '../utils/modelModality';
 
 const readImageAsDataUrl = (file: File, maxSize = 512, quality = 0.82) =>
   new Promise<string | null>((resolve) => {
@@ -228,14 +229,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClearDownloadDirectory,
 }) => {
   const t = (zh: string, en: string) => (language === 'zh' ? zh : en);
+  const MAX_MODEL_TAGS = 3;
+  const modelTagOptions: { id: ModelModality; label: string }[] = [
+    { id: 'video', label: t('视频', 'Video') },
+    { id: 'image', label: t('图片', 'Image') },
+    { id: 'text', label: t('文字', 'Text') },
+  ];
 
-  const resolveModelModality = (model: Model): ModelModality => {
-    if (model.modality) return model.modality;
-    const id = (model.id || '').toLowerCase();
-    if (id.includes('sora-video')) return 'video';
-    if (id.includes('image')) return 'image';
-    return 'text';
-  };
 
   const renderModalityBadge = (modality: ModelModality) => {
     const label =
@@ -267,7 +267,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [newModelName, setNewModelName] = useState('');
   const [newModelVision, setNewModelVision] = useState(true);
   const [newModelProvider, setNewModelProvider] = useState<ModelProvider>('openai');
-  const [newModelModality, setNewModelModality] = useState<ModelModality>('text');
+  const [newModelModalities, setNewModelModalities] = useState<ModelModality[]>(['text']);
   const [modelFilter, setModelFilter] = useState<'all' | 'openai' | 'gemini'>('all');
   const [starCount, setStarCount] = useState<number | null>(null);
   const [starLoading, setStarLoading] = useState(false);
@@ -286,7 +286,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [modelDraftName, setModelDraftName] = useState('');
   const [modelDraftVision, setModelDraftVision] = useState(true);
   const [modelDraftProvider, setModelDraftProvider] = useState<ModelProvider>('openai');
-  const [modelDraftModality, setModelDraftModality] = useState<ModelModality>('text');
+  const [modelDraftModalities, setModelDraftModalities] = useState<ModelModality[]>(['text']);
   const [modelDraftError, setModelDraftError] = useState('');
 
   const [roleCardAddOpen, setRoleCardAddOpen] = useState(false);
@@ -353,6 +353,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setToastMessage(null);
       toastTimerRef.current = null;
     }, 1500);
+  };
+
+  const toggleModalitySelection = (
+    prev: ModelModality[],
+    next: ModelModality,
+    onLimit: () => void,
+    onMin: () => void
+  ) => {
+    if (prev.includes(next)) {
+      if (prev.length <= 1) {
+        onMin();
+        return prev;
+      }
+      return prev.filter((item) => item !== next);
+    }
+    if (prev.length >= MAX_MODEL_TAGS) {
+      onLimit();
+      return prev;
+    }
+    return [...prev, next];
   };
 
   const copyText = async (text: string, toastLabel?: string) => {
@@ -881,7 +901,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     e.preventDefault();
   };
 
-  const APP_VERSION = 'v4.3';
+  const APP_VERSION = 'v4.4';
 
   const handleCopyVersionHover = async () => {
     try {
@@ -943,7 +963,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const resolveGeminiTestModelId = (): string => {
-    const geminiTextModel = availableModels.find((m) => m.provider === 'gemini' && resolveModelModality(m) === 'text');
+    const geminiTextModel = availableModels.find(
+      (m) => m.provider === 'gemini' && resolveModelModalities(m).includes('text')
+    );
     return geminiTextModel?.id || 'gemini-3-pro-preview';
   };
 
@@ -1099,12 +1121,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const trimmedId = newModelId.trim();
     const trimmedName = newModelName.trim();
     if (!trimmedId || !trimmedName) return;
+    if (newModelModalities.length === 0) {
+      showToast(t('请至少选择 1 个标签。', 'Select at least one tag.'));
+      return;
+    }
+    const normalizedModalities = normalizeModalities(newModelModalities, 'text');
     const newModel: Model = {
       id: trimmedId,
       name: trimmedName,
       vision: newModelVision,
       provider: newModelProvider,
-      modality: newModelModality,
+      modality: normalizedModalities[0],
+      modalities: normalizedModalities,
     };
 
     // Avoid duplicates within the same provider (duplicates across providers are allowed).
@@ -1124,7 +1152,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setNewModelName('');
     setNewModelVision(true);
     setNewModelProvider('openai');
-    setNewModelModality('text');
+    setNewModelModalities(['text']);
   };
 
   const handleDeleteModel = (id: string, provider?: ModelProvider) => {
@@ -1143,16 +1171,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const name = String(raw.name || '').trim();
     if (!id || !name) return null;
     const provider: ModelProvider = raw.provider === 'gemini' ? 'gemini' : 'openai';
-    const modality: ModelModality =
-      raw.modality === 'image' || raw.modality === 'video' || raw.modality === 'text'
-        ? raw.modality
-        : resolveModelModality({ id, name, vision: Boolean(raw.vision), provider });
+    const vision = typeof raw.vision === 'boolean' ? raw.vision : true;
+    const fallbackModel: Model = { id, name, vision, provider };
+    const fallbackModality = resolvePrimaryModality(fallbackModel);
+    const rawModalities = Array.isArray(raw.modalities)
+      ? raw.modalities
+      : raw.modality
+      ? [raw.modality]
+      : [];
+    const normalizedModalities = normalizeModalities(rawModalities, fallbackModality);
+    const primaryModality = normalizedModalities[0] || fallbackModality;
     return {
       id,
       name,
-      vision: typeof raw.vision === 'boolean' ? raw.vision : true,
+      vision,
       provider,
-      modality,
+      modality: primaryModality,
+      modalities: normalizedModalities,
       description: typeof raw.description === 'string' ? raw.description : undefined,
     };
   };
@@ -1230,7 +1265,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setModelDraftName(model.name || '');
     setModelDraftVision(Boolean(model.vision));
     setModelDraftProvider(model.provider === 'gemini' ? 'gemini' : 'openai');
-    setModelDraftModality(resolveModelModality(model));
+    setModelDraftModalities(resolveModelModalities(model));
     setModelEditOpen(true);
   };
 
@@ -1249,12 +1284,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       return;
     }
 
+    if (modelDraftModalities.length === 0) {
+      setModelDraftError(t('请至少选择 1 个标签。', 'Select at least one tag.'));
+      return;
+    }
+    const normalizedModalities = normalizeModalities(modelDraftModalities, 'text');
     const updated: Model = {
       id: trimmedId,
       name: trimmedName,
       vision: modelDraftVision,
       provider: modelDraftProvider,
-      modality: modelDraftModality,
+      modality: normalizedModalities[0],
+      modalities: normalizedModalities,
     };
 
     const old = modelEditOriginal;
@@ -1513,22 +1554,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="flex items-center gap-3">
                   <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('标签', 'Tags')}</span>
                   <div className="inline-flex rounded-full bg-gray-800 p-1">
-                    {[
-                      { id: 'video', label: t('视频', 'Video') },
-                      { id: 'image', label: t('图片', 'Image') },
-                      { id: 'text', label: t('文字', 'Text') },
-                    ].map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                          modelDraftModality === item.id ? 'bg-white text-gray-900' : 'text-gray-300 hover:text-white'
-                        }`}
-                        onClick={() => setModelDraftModality(item.id as ModelModality)}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
+                    {modelTagOptions.map((item) => {
+                      const isSelected = modelDraftModalities.includes(item.id);
+                      const isDisabled = !isSelected && modelDraftModalities.length >= MAX_MODEL_TAGS;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          disabled={isDisabled}
+                          aria-pressed={isSelected}
+                          className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                            isSelected ? 'bg-white text-gray-900' : 'text-gray-300 hover:text-white'
+                          } ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          onClick={() =>
+                            setModelDraftModalities((prev) =>
+                              toggleModalitySelection(
+                                prev,
+                                item.id,
+                                () => showToast(t('最多选择 3 个标签。', 'Select up to 3 tags.')),
+                                () => showToast(t('至少选择 1 个标签。', 'Select at least 1 tag.'))
+                              )
+                            )
+                          }
+                        >
+                          {item.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="text-[11px] text-gray-500 dark:text-gray-400">
+                    {t(`已选 ${modelDraftModalities.length}/${MAX_MODEL_TAGS}（至少 1 个）`, `Selected ${modelDraftModalities.length}/${MAX_MODEL_TAGS} (min 1)`)}
                   </div>
                 </div>
               </div>
@@ -2034,7 +2089,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
                         moreImagesEnabled ? 'bg-gray-700 dark:bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'
                       }`}
-                      title={t('开启后最多可上传 5 张图片', 'Allows uploading up to 5 images')}
+                      title={t('开启后最多可上传 10 张图片', 'Allows uploading up to 10 images')}
                     >
                       <div
                         className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-300 ${
@@ -2167,7 +2222,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             <Eye size={10} /> {t('视觉', 'Vision')}
                           </span>
                         )}
-                        {renderModalityBadge(resolveModelModality(model))}
+                        {resolveModelModalities(model).map((modality) => (
+                          <React.Fragment key={`${model.id}-${modality}`}>{renderModalityBadge(modality)}</React.Fragment>
+                        ))}
                         <span
                           className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${
                             model.provider === 'gemini'
@@ -2291,26 +2348,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
                         {t('标签', 'Tags')}
                       </span>
-                      <div className="inline-flex rounded-full bg-gray-800 p-1">
-                        {[
-                          { id: 'video', label: t('视频', 'Video') },
-                          { id: 'image', label: t('图片', 'Image') },
-                          { id: 'text', label: t('文字', 'Text') },
-                        ].map((item) => (
+                    <div className="inline-flex rounded-full bg-gray-800 p-1">
+                      {modelTagOptions.map((item) => {
+                        const isSelected = newModelModalities.includes(item.id);
+                        const isDisabled = !isSelected && newModelModalities.length >= MAX_MODEL_TAGS;
+                        return (
                           <button
                             key={item.id}
                             type="button"
+                            disabled={isDisabled}
+                            aria-pressed={isSelected}
                             className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                              newModelModality === item.id ? 'bg-white text-gray-900' : 'text-gray-300 hover:text-white'
-                            }`}
-                            onClick={() => setNewModelModality(item.id as ModelModality)}
+                              isSelected ? 'bg-white text-gray-900' : 'text-gray-300 hover:text-white'
+                            } ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            onClick={() =>
+                              setNewModelModalities((prev) =>
+                                toggleModalitySelection(
+                                  prev,
+                                  item.id,
+                                  () => showToast(t('最多选择 3 个标签。', 'Select up to 3 tags.')),
+                                  () => showToast(t('至少选择 1 个标签。', 'Select at least 1 tag.'))
+                                )
+                              )
+                            }
                           >
                             {item.label}
                           </button>
-                        ))}
-                      </div>
+                        );
+                      })}
+                    </div>
+                    <div className="text-[11px] text-gray-500 dark:text-gray-400">
+                      {t(`已选 ${newModelModalities.length}/${MAX_MODEL_TAGS}（至少 1 个）`, `Selected ${newModelModalities.length}/${MAX_MODEL_TAGS} (min 1)`)}
                     </div>
                   </div>
+                </div>
 
                   {hasDuplicateModelName && (
                     <div className="text-xs text-red-500">

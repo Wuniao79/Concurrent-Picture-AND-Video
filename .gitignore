@@ -24,3 +24,13 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local env / deployment
+.env
+.env.*
+!.env.example
+!.env.sample
+.user.ini
+
+# Local planning docs
+plan/

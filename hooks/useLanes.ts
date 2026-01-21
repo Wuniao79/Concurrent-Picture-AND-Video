@@ -142,7 +142,7 @@ export const useLanes = (options: UseLanesOptions) => {
 
     const idSet = new Set(ids);
     setLanes((prev) =>
-      prev.map((lane) => (idSet.has(lane.id) ? { ...lane, isThinking: false } : lane))
+      prev.map((lane) => (idSet.has(lane.id) ? { ...lane, isThinking: false, progress: 100 } : lane))
     );
   };
 
@@ -213,7 +213,7 @@ export const useLanes = (options: UseLanesOptions) => {
         const state = laneRunStateRef.current[lane.id];
         const botId = state?.botMessageId;
         if (!botId) {
-          return { ...lane, isThinking: false };
+          return { ...lane, isThinking: false, progress: 100 };
         }
         const msgs = [...lane.messages];
         const idx = msgs.findIndex((m) => m.id === botId);
@@ -222,7 +222,7 @@ export const useLanes = (options: UseLanesOptions) => {
         } else {
           msgs.push({ id: botId, role: Role.MODEL, text: cancelText, timestamp: now });
         }
-        return { ...lane, isThinking: false, messages: msgs };
+        return { ...lane, isThinking: false, progress: 100, messages: msgs };
       })
     );
 
@@ -231,6 +231,69 @@ export const useLanes = (options: UseLanesOptions) => {
     });
 
     return queuedIds.length;
+  }, []);
+
+  const stopCurrentRun = useCallback(() => {
+    const runId = runIdRef.current;
+    const laneState = laneRunStateRef.current;
+    const runLaneIds = runId
+      ? Object.keys(laneState).filter((laneId) => laneState[laneId]?.runId === runId)
+      : Object.keys(laneState);
+    const ids = runLaneIds.length > 0 ? runLaneIds : Object.keys(abortControllersRef.current);
+    if (ids.length === 0) {
+      runIdRef.current = null;
+      laneRunStateRef.current = {};
+      return 0;
+    }
+
+    const now = Date.now();
+    const stopText = '已终止';
+    const idSet = new Set(ids);
+    const botMessageIds: Record<string, string | undefined> = {};
+    ids.forEach((id) => {
+      botMessageIds[id] = laneState[id]?.botMessageId;
+    });
+
+    ids.forEach((id) => {
+      try {
+        abortControllersRef.current[id]?.abort();
+      } catch {
+        // ignore
+      }
+      delete abortControllersRef.current[id];
+    });
+
+    setLanes((prev) =>
+      prev.map((lane) => {
+        if (!idSet.has(lane.id)) return lane;
+        const botId = botMessageIds[lane.id];
+        if (!botId) {
+          return { ...lane, isThinking: false, progress: 100 };
+        }
+
+        const msgs = [...lane.messages];
+        const idx = msgs.findIndex((m) => m.id === botId);
+        if (idx !== -1) {
+          const prevText = typeof msgs[idx].text === 'string' ? msgs[idx].text : '';
+          if (!prevText.trim()) {
+            msgs[idx] = { ...msgs[idx], text: stopText, timestamp: now };
+          }
+        } else {
+          msgs.push({ id: botId, role: Role.MODEL, text: stopText, timestamp: now });
+        }
+
+        return { ...lane, isThinking: false, progress: 100, messages: msgs };
+      })
+    );
+
+    ids.forEach((id) => {
+      delete laneRunStateRef.current[id];
+    });
+    if (runIdRef.current === runId) {
+      runIdRef.current = null;
+    }
+
+    return ids.length;
   }, []);
 
   const normalizePresetLanes = (preset?: LaneState[]) =>
@@ -581,7 +644,19 @@ export const useLanes = (options: UseLanesOptions) => {
           }));
         } finally {
           if (wasAborted || controller.signal.aborted) {
-            applyLaneUpdate((l) => ({ ...l, isThinking: false }));
+            const abortedAt = Date.now();
+            const abortedText = '已终止';
+            applyLaneUpdate((l) => {
+              const msgs = [...l.messages];
+              const idx = msgs.findIndex((m) => m.id === botMessageId);
+              if (idx !== -1) {
+                const prevText = typeof msgs[idx].text === 'string' ? msgs[idx].text : '';
+                if (!prevText.trim()) {
+                  msgs[idx] = { ...msgs[idx], text: abortedText, timestamp: abortedAt };
+                }
+              }
+              return { ...l, isThinking: false, progress: 100, messages: msgs };
+            });
             delete abortControllersRef.current[laneId];
             const state = laneRunStateRef.current[laneId];
             if (state && state.runId === runId) {
@@ -662,5 +737,6 @@ export const useLanes = (options: UseLanesOptions) => {
     hasStartedChat,
     setHasStartedChat,
     cancelQueuedLanes,
+    stopCurrentRun,
   };
 };

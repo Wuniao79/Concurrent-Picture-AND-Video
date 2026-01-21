@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Copy, Download, Image as ImageIcon, Sparkles, Upload, X } from 'lucide-react';
 import { ApiMode, Language, Model, ModelProvider } from '../../types';
 import { generateResponse } from '../../services/geminiService';
+import { hasModelModality } from '../../utils/modelModality';
 
 type OutlineEntry = {
   id: string;
@@ -271,9 +272,10 @@ export const XhsLabModal: React.FC<XhsLabModalProps> = ({
   const providerModels = useMemo(() => {
     const normalizedProvider = normalizeProvider(provider);
     const all = availableModels.filter((model) => normalizeProvider(model.provider) === normalizedProvider);
-    const nonVideo = all.filter((model) => model.modality !== 'video');
-    const textPreferred = nonVideo.filter((model) => !model.modality || model.modality === 'text');
-    return textPreferred.length > 0 ? textPreferred : nonVideo;
+    const textPreferred = all.filter((model) => hasModelModality(model, 'text'));
+    if (textPreferred.length > 0) return textPreferred;
+    const nonVideo = all.filter((model) => !hasModelModality(model, 'video'));
+    return nonVideo.length > 0 ? nonVideo : all;
   }, [availableModels, provider]);
 
   const selectedModel = useMemo(
@@ -356,7 +358,7 @@ export const XhsLabModal: React.FC<XhsLabModalProps> = ({
       setError(language === 'zh' ? '请先选择模型。' : 'Please select a model.');
       return;
     }
-    if (selectedModel?.modality && selectedModel.modality !== 'text') {
+    if (selectedModel && !hasModelModality(selectedModel, 'text')) {
       setError(language === 'zh' ? '请选择文本模型。' : 'Please choose a text model.');
       return;
     }

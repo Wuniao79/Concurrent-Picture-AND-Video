@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { History, Maximize2, Menu, Minimize2, PanelLeft, Settings, Trash2 } from 'lucide-react';
 import { ApiMode, Language, Model, ModelModality } from '../types';
+import { resolveModelModalities } from '../utils/modelModality';
 
 interface TopBarProps {
   language: Language;
@@ -44,13 +45,8 @@ export const TopBar: React.FC<TopBarProps> = ({
   isFullView,
   onToggleFullView,
 }) => {
-  const resolveModelModality = (model: Model): ModelModality => {
-    if (model.modality) return model.modality;
-    const id = (model.id || '').toLowerCase();
-    if (id.includes('sora-video')) return 'video';
-    if (id.includes('image')) return 'image';
-    return 'text';
-  };
+  const hasModelModality = (model: Model, modality: ModelModality) =>
+    resolveModelModalities(model).includes(modality);
 
   const filteredModels =
     apiMode === 'gemini'
@@ -58,7 +54,7 @@ export const TopBar: React.FC<TopBarProps> = ({
       : availableModels.filter((m) => !m.provider || m.provider === 'openai');
 
   const filteredByModality = modelModalityFilter
-    ? filteredModels.filter((m) => resolveModelModality(m) === modelModalityFilter)
+    ? filteredModels.filter((m) => hasModelModality(m, modelModalityFilter))
     : filteredModels;
 
   useEffect(() => {
@@ -79,7 +75,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   }, [effectiveSelectedId, selectedModelId, onSelectModel]);
 
   const appName = language === 'zh' ? '枭化物' : 'XiaoHuaWu';
-  const appVersion = 'v4.3';
+  const appVersion = 'v4.4';
 
   return (
     <header

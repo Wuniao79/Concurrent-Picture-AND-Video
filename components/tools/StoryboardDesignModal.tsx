@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Copy, Download, Image as ImageIcon, LayoutGrid, Plus, Trash2, X } from 'lucide-react';
 import { generateResponse } from '../../services/geminiService';
-import { ApiMode, GeminiImageSettings, Language, Model, ModelModality, ModelProvider, RoleCardItem } from '../../types';
+import { ApiMode, GeminiImageSettings, Language, Model, ModelProvider, RoleCardItem } from '../../types';
 import type { RelaySite } from '../../hooks/useSettings';
+import { hasModelModality } from '../../utils/modelModality';
 
 type StoryboardRole = {
   id: string;
@@ -192,19 +193,11 @@ export const StoryboardDesignModal: React.FC<StoryboardDesignModalProps> = ({
     return id.includes('gemini') ? 'gemini' : 'openai';
   };
 
-  const resolveModelModality = (model: Model): ModelModality => {
-    if (model?.modality) return model.modality;
-    const id = String(model?.id || '').toLowerCase();
-    if (id.includes('sora-video') || id.includes('video')) return 'video';
-    if (id.includes('image')) return 'image';
-    return 'text';
-  };
-
   const allModels = useMemo(() => (Array.isArray(availableModels) ? availableModels : []), [availableModels]);
 
   const visionModelOptions = useMemo(() => {
     const models = allModels.slice(0);
-    const textModels = models.filter((m) => resolveModelModality(m) === 'text');
+    const textModels = models.filter((m) => hasModelModality(m, 'text'));
     const base = textModels.length > 0 ? textModels : models;
     const candidates = base.filter((m) => Boolean(m.vision));
     return candidates.length > 0 ? candidates : base;
@@ -212,7 +205,7 @@ export const StoryboardDesignModal: React.FC<StoryboardDesignModalProps> = ({
 
   const imageModelOptions = useMemo(() => {
     const models = allModels.slice(0);
-    const candidates = models.filter((m) => resolveModelModality(m) === 'image');
+    const candidates = models.filter((m) => hasModelModality(m, 'image'));
     return candidates.length > 0 ? candidates : models;
   }, [allModels]);
 

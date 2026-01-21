@@ -107,7 +107,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       },
       {
         id: 'videoFrames' as ToolView,
-        label: language === 'zh' ? '提取视频首尾帧' : 'Video Frames',
+        label: language === 'zh' ? '提取视频帧' : 'Video Frames',
         icon: Film,
       },
       {

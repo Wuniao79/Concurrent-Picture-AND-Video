@@ -25,7 +25,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ language, onOpenTool }) 
     },
     {
       id: 'videoFrames' as ToolView,
-      title: language === 'zh' ? '提取视频首尾帧' : 'Video Frames',
+      title: language === 'zh' ? '提取视频帧' : 'Video Frames',
       desc: language === 'zh' ? '上传 30 秒内视频并导出首/尾帧' : 'Extract first/last frame',
       icon: Film,
       enabled: true,
@@ -40,7 +40,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ language, onOpenTool }) 
   ];
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center p-4 max-w-5xl mx-auto w-full animate-in fade-in duration-500">
+    <div className="empty-state flex-1 flex flex-col items-center justify-center p-4 max-w-5xl mx-auto w-full animate-in fade-in duration-500">
       <div className="mb-12 text-center">
         <h2 className="text-4xl font-bold text-gray-900 dark:text-white mb-4 tracking-tight">
           {language === 'zh' ? '欢迎使用并发创作工作站' : 'How can I help you today?'}
@@ -53,7 +53,8 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ language, onOpenTool }) 
             key={i}
             onClick={() => card.enabled && onOpenTool(card.id)}
             disabled={!card.enabled}
-            className={`p-5 rounded-2xl text-left transition-colors h-40 flex flex-col justify-between group border ${
+            style={{ animationDelay: `${i * 70}ms` }}
+            className={`tool-card ${card.enabled ? 'tool-card--enabled' : 'tool-card--disabled'} relative p-5 rounded-2xl text-left transition-all duration-200 h-40 flex flex-col justify-between group border ${
               card.enabled
                 ? 'bg-gray-100/50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 border-gray-200/70 dark:border-gray-700/60 hover:border-gray-300 dark:hover:border-gray-600'
                 : 'bg-gray-100/30 dark:bg-gray-800/30 border-gray-200/50 dark:border-gray-800/60 opacity-60 cursor-default'

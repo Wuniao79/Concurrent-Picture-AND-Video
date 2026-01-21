@@ -62,6 +62,8 @@ export interface Model {
   provider?: ModelProvider;
   /** Primary capability used for filtering (text/image/video). */
   modality?: ModelModality;
+  /** Multiple capabilities used for filtering (text/image/video). */
+  modalities?: ModelModality[];
 }
 
 export interface LaneConfig {

@@ -24,6 +24,7 @@ import { safeStorageGet, safeStorageSet } from './utils/storage';
 import { fetchBlobWithProxy } from './utils/download';
 import { buildImageCacheId, clearImageCache, deleteImageCacheByHistoryId, getImageCacheRecord, putImageCacheRecord } from './utils/imageCache';
 import { isVideoReadyFromText } from './utils/isVideoReady';
+import { resolveModelModalities } from './utils/modelModality';
 import {
   loadDownloadDirectoryHandle,
   saveDownloadDirectoryHandle,
@@ -226,8 +227,8 @@ const App: React.FC = () => {
   );
   const effectiveGeminiEnterpriseEnabled = enterpriseFeatureEnabled && geminiEnterpriseEnabled;
 
-  const resolveModelModalityById = useCallback(
-    (modelId: any): ModelModality => {
+  const resolveModelModalitiesById = useCallback(
+    (modelId: any): ModelModality[] => {
       const normalizedModelId =
         typeof modelId === 'string'
           ? modelId
@@ -241,13 +242,17 @@ const App: React.FC = () => {
           ? matches.find((m) => m.provider === 'gemini')
           : matches.find((m) => !m.provider || m.provider === 'openai');
       const picked = preferred || matches[0];
-      if (picked?.modality) return picked.modality;
+      if (picked) return resolveModelModalities(picked);
       const id = normalizedModelId.toLowerCase();
-      if (id.includes('sora-video') || id.includes('video')) return 'video';
-      if (id.includes('image')) return 'image';
-      return 'text';
+      if (id.includes('sora-video') || id.includes('video')) return ['video'];
+      if (id.includes('image')) return ['image'];
+      return ['text'];
     },
     [availableModels, apiMode]
+  );
+  const hasModelModalityById = useCallback(
+    (modelId: any, modality: ModelModality) => resolveModelModalitiesById(modelId).includes(modality),
+    [resolveModelModalitiesById]
   );
 
   const computeIsGeneratingFromLanes = useCallback(
@@ -269,7 +274,7 @@ const App: React.FC = () => {
         });
 
       const isVideoInFlight = (lane: LaneState) => {
-        if (resolveModelModalityById(lane.model) !== 'video') return false;
+        if (!hasModelModalityById(lane.model, 'video')) return false;
         if (lane.error) return false;
         if (typeof lane.errorCode === 'number' && lane.errorCode >= 400) return false;
         if (!laneHasUserPrompt(lane)) return false;
@@ -281,7 +286,7 @@ const App: React.FC = () => {
 
       return ls.some((l) => l.isThinking || isVideoInFlight(l));
     },
-    [resolveModelModalityById]
+    [hasModelModalityById]
   );
   const onBackgroundLaneUpdate = useCallback(
     (sessionId: string, laneId: string, updater: (prev: LaneState) => LaneState) => {
@@ -432,6 +437,7 @@ const App: React.FC = () => {
     hasStartedChat,
     setHasStartedChat,
     cancelQueuedLanes,
+    stopCurrentRun,
   } = useLanes({
     selectedModelId,
     availableModels,
@@ -546,7 +552,7 @@ const App: React.FC = () => {
       : availableModels.filter((m) => !m.provider || m.provider === 'openai');
 
   const videoChatLimitOverrideEnabled = Boolean(devExperimentalEnabled && devTbd2Enabled);
-  const isVideoSession = lanes.some((l) => resolveModelModalityById(l.model) === 'video');
+  const isVideoSession = lanes.some((l) => hasModelModalityById(l.model, 'video'));
   const hasAnyUserPrompt = lanes.some((l) =>
     (l.messages || []).some(
       (m) =>
@@ -873,8 +879,8 @@ const App: React.FC = () => {
     [laneImageDownloads]
   );
   const showBulkDownload = useMemo(
-    () => displayLanes.some((lane) => resolveModelModalityById(lane.model) === 'image'),
-    [displayLanes, resolveModelModalityById]
+    () => displayLanes.some((lane) => hasModelModalityById(lane.model, 'image')),
+    [displayLanes, hasModelModalityById]
   );
   const bulkDownloadDisabled = totalDownloadImages === 0 || bulkDownloadLoading;
   const showStopQueue = Boolean(isGenerating && concurrencyIntervalSec >= 10 && lanes.length > 1);
@@ -1370,7 +1376,7 @@ const App: React.FC = () => {
       return;
     }
 
-    const isVideoHistory = (item.lanes || []).some((l) => resolveModelModalityById(l.model) === 'video');
+    const isVideoHistory = (item.lanes || []).some((l) => hasModelModalityById(l.model, 'video'));
     if (isVideoHistory) {
       // Video histories are view-only; they don't support multi-turn chat by default.
       setIsViewingHistory(true);
@@ -1688,6 +1694,7 @@ const App: React.FC = () => {
             if (!isFullView) {
               setIsSidebarOpen(false);
               setIsHistoryPanelOpen(false);
+              setIsInputCollapsed(true);
             }
             setIsFullView((v) => !v);
           }}
@@ -1708,7 +1715,9 @@ const App: React.FC = () => {
             <EmptyState language={language} onOpenTool={handleOpenTool} />
 	              <div
                   className={`app-input-panel z-20 ${
-                    isInputCollapsed ? 'px-4 py-2 bg-transparent border-transparent' : 'p-4 pb-6 bg-white dark:bg-gray-900'
+                    isInputCollapsed
+                      ? 'px-4 py-2 bg-transparent border-t border-gray-500/70 dark:border-gray-600/70'
+                      : 'p-4 pb-6 bg-white dark:bg-gray-900'
                   }`}
                 >
                   <ChatInput
@@ -1736,7 +1745,8 @@ const App: React.FC = () => {
                     onBulkDownload={handleBulkDownloadImages}
                     showStopQueue={showStopQueue}
                     onStopQueue={() => cancelQueuedLanes()}
-	                  showRelaySelect={showRelaySelect}
+                    onStopGenerating={() => stopCurrentRun()}
+  	                  showRelaySelect={showRelaySelect}
 	                  relays={enabledRelays}
 	                  activeRelayId={activeRelayId}
 	                  onSelectRelay={(id) => {
@@ -1852,9 +1862,11 @@ const App: React.FC = () => {
 
               <div
                 className={`app-input-panel z-20 ${
-                  isInputCollapsed ? 'px-4 py-2 bg-transparent border-transparent' : 'p-4 pb-6 bg-white dark:bg-gray-900'
+                  isInputCollapsed
+                    ? 'px-4 py-2 bg-transparent border-t border-gray-500/70 dark:border-gray-600/70'
+                    : 'p-4 pb-6 bg-white dark:bg-gray-900'
                 } ${isFullView ? '' : 'border-t border-gray-100 dark:border-gray-800'}`}
-	              >
+              >
                 <ChatInput
 	                onSend={handleSendFromUI}
 	                language={language}
@@ -1880,6 +1892,7 @@ const App: React.FC = () => {
                   onBulkDownload={handleBulkDownloadImages}
                   showStopQueue={showStopQueue}
                   onStopQueue={() => cancelQueuedLanes()}
+                  onStopGenerating={() => stopCurrentRun()}
                   showRelaySelect={showRelaySelect}
 	                  relays={enabledRelays}
 	                  activeRelayId={activeRelayId}

@@ -1,7 +1,7 @@
 {
   "name": "wuniao_sora2-AI-1.6-V1",
   "private": true,
-  "version": "4.3.0",
+  "version": "4.4.0",
   "license": "MIT",
   "type": "module",
   "scripts": {
