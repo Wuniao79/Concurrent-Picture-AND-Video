@@ -6,12 +6,14 @@
  
 ## 📸 界面概览
 
-<img width="2304" height="1209" alt="image" src="https://github.com/user-attachments/assets/a51c4e12-cee0-4d21-8801-6f9166b0066d" />
+<img width="2304" height="1209" alt="image" src="https://github.com/user-attachments/assets/2d91b352-c57d-4fcd-98d9-8fe2f96e3755" />
 
 
 
 
-<img width="2304" height="1209" alt="image" src="https://github.com/user-attachments/assets/a6b6b8dd-0e10-4304-9e14-2ce3141caa97" />
+
+<img width="2304" height="1209" alt="image" src="https://github.com/user-attachments/assets/d3d13185-d6db-44a3-a9be-d2b3701cbaba" />
+
 
 
 
@@ -19,9 +21,11 @@
 
 ### ⏰并发场景
 
-<img width="2522" height="1303" alt="image" src="https://github.com/user-attachments/assets/16cd350e-6770-49e0-a60d-e003775f639d" />
+<img width="2304" height="1209" alt="image" src="https://github.com/user-attachments/assets/d61be764-a688-4444-9dd0-97cf225a98fb" />
 
-<img width="2529" height="1332" alt="image" src="https://github.com/user-attachments/assets/9ad4c09d-6ff0-4736-ae5d-6f8dc4ddd3b8" />
+
+<img width="2304" height="1209" alt="image" src="https://github.com/user-attachments/assets/4ada14ef-d2b1-43c8-adc5-384a914b3a0b" />
+
 
 
 
@@ -31,7 +35,8 @@
 
 
 #### 📋文字并发
-<img width="2544" height="1303" alt="image" src="https://github.com/user-attachments/assets/59872002-61fc-4365-ad71-f5f7f499e46c" />
+<img width="2304" height="1209" alt="image" src="https://github.com/user-attachments/assets/dc1562b6-7d7a-449b-a72a-7b68f37f6582" />
+
 
 
 </div>
@@ -44,7 +49,7 @@
 - ### ✍️ 自带并发历史，可多历史同时运行
 - ### 🎭 角色卡与提示词，无需反复复制角色ID与描述词
 - ### 🏭 自带素材库，可快速保存需要的图片或视频，追求更高效的效率
-- ### 🪞 新增九宫格分镜和简易时间线，可快速筛选合适的视频并进一步优化
+- ### 🪞 新增九宫格分镜、简易时间线以及视频帧九宫格制作，可快速筛选合适的视频并进一步优化
 - ### 🖼️ 提示词库，图片分割以及视频首尾帧提取等便携工具
 - ### 🛡️ **全局提示 / 加载 / 进度条 / 错误处理**，整体体验更顺滑
 - ### 🌓 **明暗主题** - 护眼模式，随心切换
@@ -89,6 +94,10 @@
 ### **Sora2 视频的 Remix 复制按钮**
   - 🧷 识别到 Sora2 的 Remix 内容后自动弹出 **一键复制** 按钮
   - **“📌 一键复制 Remix Prompt”** / **“🎬 复制视频 Remix”**
+
+## v4.4新增功能（视频帧九宫格）效果展示
+<img width="2304" height="1209" alt="image" src="https://github.com/user-attachments/assets/c0892b7f-9ed6-4200-bd4c-24d1c821ed6d" />
+
 
 ---
 ## 🔧 部署方式
@@ -164,7 +173,7 @@ http://localhost:5015
 ##### 2025年12月25日： V4.0-v1 新增角色卡与提示词和Sora2pi提示词选项。UI方面小细节优化和部分bug修复。
 ##### 2025年12月31日： V4.2 新增素材库与简易时间线。UI方面小细节优化和部分bug修复。
 ##### 2026年01月08日： V4.3 新增分镜设计在线工具并增加了模型名称导入导出，UI方面小细节优化和部分bug修复。
-##### 2026年01月20日： V4.4 新增视频抽帧拼贴（3×3/5×5、可清除上一帧、下载拼贴），并将“提取视频首尾帧”改名为“提取视频帧”。
+##### 2026年01月22日： V4.4 新增视频抽帧拼贴（3×3/5×5、可清除上一帧、下载拼贴），UI方面小细节优化与增加了终止按钮。
 
 ---
 ## 🛣️ Roadmap（未来版本计划）
